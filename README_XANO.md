@@ -24,6 +24,9 @@ VITE_API_URL=https://x8ki-letl-twmt.n7.xano.io/api:kharandi_v1
 
 - authentification, OTP Nimba, mot de passe, profil, déconnexion et appareils de confiance ;
 - choix obligatoire du rôle à l'inscription : `STUDENT`, `PARENT`, `TUTOR` ou `VENDOR` ;
+- saisie obligatoire du prénom et du nom, transmis dans `first_name` et `last_name` ;
+- acceptation obligatoire des CGU et de la politique de confidentialité ;
+- profil post-inscription adapté au rôle : niveau/série, matières/niveaux/tarif/expérience ou boutique ;
 - Wallet serveur et historique des points ;
 - Kharandi Abacus : niveaux, compétences et sessions ;
 - Karamö texte et analyse d'image ;
@@ -36,6 +39,8 @@ VITE_API_URL=https://x8ki-letl-twmt.n7.xano.io/api:kharandi_v1
 - actualités, bourses, Palmarès, notifications, recherche et création de tickets ;
 - messagerie Xano ;
 - fonctions Kharandi École disponibles dans le backend actuel.
+
+La v3.5 aligne les payloads publiés par Xano : `answer` pour Abacus, panier Makiti sous `items`, import des résultats sous `csv_file`, support limité à `TECHNICAL` et `PAYMENT`, notes avec les quatre champs publiés et profil avec `niveau`. Elle raccorde également les CRUD administratifs Utilisateurs, Actualités, Bourses, Palmarès, Matières, Documents, Écoles, Classes, Élèves et Enseignants. Le Bearer token est ajouté automatiquement ; aucun `user_id` n'est envoyé par les formulaires.
 
 Les six affiches **Allemagne, Angleterre, Chine, Espagne, Malaisie et Canada** restent intégrées comme contenu local avec leurs liens Google Drive. Aucune route `content/study-abroad` n'est appelée.
 

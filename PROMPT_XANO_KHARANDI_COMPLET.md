@@ -808,7 +808,7 @@ Crée :
 | POST | `/auth/login/` | body `phone`; connexion directe seulement avec `X-Device-Token` valide, sinon indique `otp_sent` ou `password_required` |
 | POST | `/auth/login/password/` | téléphone + mot de passe |
 | POST | `/auth/login/verify/` | téléphone + OTP LOGIN, crée la session |
-| POST | `/auth/register/` | téléphone + OTP REGISTER + mot de passe + rôle optionnel non privilégié |
+| POST | `/auth/register/` | `phone`, `code`, `password`, `role`, `first_name`, `last_name`, `terms_accepted` et `privacy_accepted` obligatoires |
 | POST | `/auth/register/student/` | alias d'inscription étudiant |
 | POST | `/auth/register/eleve/` | alias français de l'inscription étudiant |
 | POST | `/auth/register/parent/` | alias parent |
@@ -832,7 +832,13 @@ Crée :
 | GET/POST | `/auth/users/` | ADMIN; filtre `role`, création contrôlée |
 | GET/PATCH/DELETE | `/auth/users/{id}/` | ADMIN; pas d'auto-suppression du dernier admin |
 
-À l'inscription, seuls `STUDENT`, `PARENT`, `TUTOR` et `VENDOR` sont acceptables depuis le public. Refuser `ADMIN`, `SCHOOL_ADMIN` et `SCHOOL_TEACHER`. Mot de passe minimum 8 caractères, avec politique anti-mots de passe faibles. Hasher via l'auth native Xano.
+À l'inscription, `first_name` et `last_name` doivent contenir entre 2 et 80 caractères. Calculer `display_name` côté serveur à partir du prénom et du nom. `role` est obligatoire. Seuls `STUDENT`, `PARENT`, `TUTOR` et `VENDOR` sont acceptables depuis le public. Refuser `ADMIN`, `SCHOOL_ADMIN` et `SCHOOL_TEACHER`. `terms_accepted` et `privacy_accepted` doivent être strictement vrais ; le serveur écrit alors `terms_accepted_at` et `privacy_accepted_at` avec sa propre heure. Ne jamais accepter des dates de consentement choisies par le client. Mot de passe minimum 8 caractères, avec politique anti-mots de passe faibles. Hasher via l'auth native Xano.
+
+Après la création du compte, `PATCH /auth/me/` accepte comme contrat commun `first_name`, `last_name`, `city`, `avatar`, `bio`, `school_level` et `serie`. Il peut aussi accepter les informations adaptées au rôle : `subjects`, `levels`, `hourly_price` et `years_experience` pour `TUTOR`; `shop_name` et `shop_description` pour `VENDOR`. `avatar` doit accepter un fichier en `multipart/form-data`. Ignorer ou refuser les champs incompatibles avec le rôle authentifié. Le rôle public ne peut jamais être élevé vers un rôle administratif par cette route.
+
+## 7.5 Superadministrateur initial
+
+Créer une procédure d'initialisation idempotente et non publique qui lit `SUPERADMIN_PHONE` et `SUPERADMIN_INITIAL_PASSWORD` depuis les variables secrètes Xano. Normaliser le téléphone, utiliser l'auth native Xano pour le mot de passe et créer le compte uniquement s'il n'existe pas avec `role = ADMIN`, `is_superadmin = true`, `is_active = true`, `phone_verified = true` et `must_change_password = true`. Ne jamais journaliser ni retourner le mot de passe. Aucun endpoint public ne peut créer ou promouvoir un administrateur.
 
 Le frontend historique appelle parfois `/users/me/points/` après un exercice ou avant un achat. **Ne reproduis pas cette faille** : un client ne peut jamais choisir librement un crédit ou débit de points. Le crédit vient uniquement de la soumission serveur d'un QCM ; le débit vient uniquement de `/marketplace/orders/redeem/`. L'alias historique doit retourner une erreur explicite aux utilisateurs standards afin de rendre la migration visible.
 
@@ -877,7 +883,9 @@ Implémentation Karamö :
 
 Génération QCM : exiger un JSON structuré validé, 4 choix par question, une seule bonne réponse, explication pédagogique privée jusqu'à soumission. Lors de la soumission, calculer le score côté serveur. Une réussite parfaite attribue par défaut `50` points une seule fois via `wallet_apply_transaction`.
 
-`/exercises/start/` accepte `series` (`SM`, `SS`, `SE`, `BEPC`, `CEE`), `year`, `subject`, `level` et crée un `qcm_attempt`. Il retourne `attempt_id`, le QCM et les choix **sans** `correct_index`, bonne réponse ni explication privée. `/exercises/{attempt_id}/submit/` reçoit toutes les réponses, vérifie que l'essai appartient à l'utilisateur, calcule le score et la récompense, marque l'essai soumis et retourne les corrections. Une répétition retourne le même résultat sans recréditer les points. `/ai/qcm/{qcm_id}/submit/` utilise exactement la même fonction interne.
+`/exercises/start/` reçoit exactement `{ "qcm_id": <nombre> }` et crée un `qcm_attempt`. Il retourne `attempt_id`, le QCM et les choix **sans** `correct_index`, bonne réponse ni explication privée. `/exercises/{attempt_id}/submit/` reçoit toutes les réponses, vérifie que l'essai appartient à l'utilisateur, calcule le score et la récompense, marque l'essai soumis et retourne les corrections. Une répétition retourne le même résultat sans recréditer les points. `/ai/qcm/{qcm_id}/submit/` utilise exactement la même fonction interne.
+
+Contrats Karamö utilisés par le frontend : `POST /ai/ask/` reçoit `message` et éventuellement `conversation_id`; `POST /ai/ask-image/` reçoit en `multipart/form-data` un fichier `image` et un texte `message`. Le serveur rattache automatiquement la demande à l'utilisateur authentifié.
 
 ## 8.2 Kharandi Abacus
 
@@ -897,6 +905,8 @@ Génération QCM : exiger un JSON structuré validé, 4 choix par question, une 
 | POST | `/abacus/sessions/{id}/abandon/` | clôture sans récompense |
 | GET | `/abacus/progress/` | tableau de progression global et par compétence |
 | GET | `/abacus/history/` | historique paginé des sessions |
+
+Contrats Abacus utilisés par le frontend : `/abacus/sessions/start/` reçoit `skill_id` (nombre) et `mode` parmi `GUIDED`, `PRACTICE`, `TIMED`, `FLASH_ANZAN`, `AUDIO`; `/abacus/sessions/{id}/answer/` reçoit `question_id` (nombre), `answer_value` (texte) et `response_time_ms` (nombre). Ne jamais accepter un `user_id` envoyé par le client.
 | GET | `/abacus/daily-challenge/` | défi du jour adapté au niveau |
 | POST | `/abacus/daily-challenge/start/` | crée l'unique tentative récompensable |
 | GET | `/abacus/leaderboard/` | `scope`, `period`, `school_id`, `class_id` sécurisés |
@@ -1036,7 +1046,7 @@ POST/PATCH/DELETE des actualités, bourses, programmes et palmarès : ADMIN uniq
 | POST | `/results/import/{batch_id}/publish/` |
 | POST | `/results/import/{batch_id}/unpublish/` |
 
-`GET /results/` est public et accepte `q`, `exam_type`, `year`, `dpe`, `centre`, `serie`, `mention`, `page`, `page_size`. Limiter les résultats, normaliser la recherche et ne pas exposer plus de données personnelles que les fichiers de résultats publics.
+`GET /results/` est public et le contrat frontend envoie `q`, avec `exam_type` et `year` optionnels. Le backend peut proposer d'autres filtres (`dpe`, `centre`, `serie`, `mention`, `page`, `page_size`) sans les rendre obligatoires. Limiter les résultats, normaliser la recherche et ne pas exposer plus de données personnelles que les fichiers de résultats publics.
 
 ## 8.6 Notes générales hors école
 
@@ -1066,6 +1076,8 @@ Un TUTOR ou enseignant autorisé voit seulement ses élèves et écrit seulement
 
 Seuls les vendeurs approuvés créent des produits. Un vendeur ne voit et ne modifie que ses produits, promos et commandes. L'achat par points utilise `POINT_GNF_VALUE=100`, exige assez de points et débite le wallet atomiquement avec la commande. En cas d'échec, aucun débit et aucun stock ne doivent rester modifiés.
 
+`POST /marketplace/orders/redeem/` reçoit exactement `product_id` (nombre) et `quantity` (nombre). L'utilisateur est toujours dérivé du Bearer token.
+
 La règle canonique est **1 point = 100 GNF**, issue du backend Kharandi. Toujours retourner `point_gnf_value`, `points_cost` et `points_balance` depuis le serveur. Ignorer toute ancienne conversion locale du frontend, notamment `prix / 5`, et ne jamais accepter un `points_cost` calculé par le client.
 
 ## 8.8 Support
@@ -1076,6 +1088,8 @@ La règle canonique est **1 point = 100 GNF**, issue du backend Kharandi. Toujou
 | GET/PATCH | `/support/tickets/{id}/` |
 
 Un utilisateur ne voit que ses tickets. ADMIN voit tout. `PATCH` peut ajouter une réponse ; seul ADMIN change librement le statut ou l'assignation. Envoyer une notification à chaque réponse pertinente.
+
+`POST /support/tickets/` reçoit `category`, `subject` et `message`. Accepter au minimum les catégories `TECHNICAL` et `BILLING`, plus `CONTENT`, `SUBSCRIPTION` et `OTHER` si activées.
 
 ## 8.9 Notifications et SMS
 
@@ -1099,6 +1113,8 @@ Un utilisateur ne voit que ses tickets. ADMIN voit tout. `PATCH` peut ajouter un
 | PATCH/DELETE | `/chat/messages/{id}/` |
 
 Canal Realtime par conversation. Avant abonnement ou publication, vérifier que l'utilisateur est membre. Pour une conversation directe, garantir une seule conversation par paire d'utilisateurs. Paginer les messages par curseur. Ne jamais diffuser un message dans un canal global.
+
+`POST /chat/conversations/{id}/messages/` reçoit `body` et éventuellement un fichier `attachment` en `multipart/form-data`. L'expéditeur est dérivé du Bearer token.
 
 ## 8.11 Rapports
 
@@ -1141,6 +1157,8 @@ Conserver les réponses dans `data`. Les connexions école et enseignant retourn
 | PATCH | `/ecole/payments/{id}/` | comptable/admin |
 | GET/POST | `/ecole/fees/` | comptable/admin ; parent lecture |
 | GET/POST | `/ecole/expenses/` | comptable/admin |
+
+`POST /ecole/grades/` reçoit exactement `student_id`, `subject_id`, `class_id`, `value`, `trimester` et `assessment_type`. Valider que l'élève, la matière et la classe appartiennent à la même école autorisée. L'auteur/enseignant est dérivé du Bearer token ; ne jamais accepter `teacher_id` ou `user_id` comme preuve d'identité du client.
 | GET/POST | `/ecole/schedules/` | membre/parent/élève lecture ; admin écriture |
 | PATCH/DELETE | `/ecole/schedules/{id}/` | admin école |
 | GET/POST | `/ecole/announcements/` | audience filtrée ; personnel écrit |
@@ -1264,6 +1282,8 @@ Crée `POST /payments/webhook/lengopay/`, public mais traité comme entrée non 
 | POST | `/payments/webhook/lengopay/` | webhook public sécurisé et idempotent |
 | POST | `/payments/webhook/` | alias historique du même webhook |
 | POST | `/payments/run-cron/` | ADMIN seulement ; lance manuellement un petit lot de réconciliation |
+
+Le contrat canonique de `POST /payments/checkout/initiate/` reçoit `product_code` (texte), `quantity` (nombre, valeur par défaut `1`) et éventuellement `option_codes` (tableau de textes). Ne pas exiger `order_id`, `amount`, `currency` ou `user_id` du frontend : le serveur retrouve le produit, le prix, la devise et l'utilisateur.
 
 Les trois endpoints d'initiation doivent accepter un header `Idempotency-Key` et retourner la même transaction si la requête identique est répétée.
 
