@@ -15,7 +15,7 @@ npm run dev
 Variable obligatoire :
 
 ```dotenv
-VITE_API_URL=https://xxxxx.n7.xano.io/api:Kharandi
+VITE_API_URL=https://x8ki-letl-twmt.n7.xano.io/api:kharandi_v1
 ```
 
 `VITE_STRICT_XANO_ROUTES` est optionnelle et active par défaut. Elle empêche le frontend d'appeler les anciennes routes Django/Firebase qui ne figurent pas dans la liste Xano fournie.
@@ -23,6 +23,7 @@ VITE_API_URL=https://xxxxx.n7.xano.io/api:Kharandi
 ## Fonctionnalités raccordées
 
 - authentification, OTP Nimba, mot de passe, profil, déconnexion et appareils de confiance ;
+- choix obligatoire du rôle à l'inscription : `STUDENT`, `PARENT`, `TUTOR` ou `VENDOR` ;
 - Wallet serveur et historique des points ;
 - Kharandi Abacus : niveaux, compétences et sessions ;
 - Karamö texte et analyse d'image ;

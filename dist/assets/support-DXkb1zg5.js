@@ -1,0 +1,1 @@
+import{a as e,u as s}from"./index-CshRcyDR.js";async function c(n){return[]}async function r(n){const{data:t}=await e.post("/support/tickets",n);return(t==null?void 0:t.data)||t}async function a(n,t){return s("Réponse à un ticket support")}export{r as createTicket,c as getTickets,a as replyToTicket};
