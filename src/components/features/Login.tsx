@@ -51,14 +51,33 @@ export const Login: React.FC = () => {
 
   const _go = () => { window.location.href = '/'; };
 
+  const requestOtp = async (p: string, targetMode: Mode) => {
+    if (targetMode === 'register') {
+      await api.post('/auth/otp/send/', { phone: p, purpose: 'REGISTER' });
+      return;
+    }
+    await api.post('/auth/login/', { phone: p });
+  };
+
+  const resendOtp = async () => {
+    setLoading(true); setError(null);
+    try {
+      await requestOtp(fmt(), mode);
+      setOtpCode('');
+      toast.success(`Nouveau code envoyé au ${fmt()}`);
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.response?.data?.error || "Impossible de renvoyer le code.");
+    } finally { setLoading(false); }
+  };
+
   // ── Étape 1 : numéro ──────────────────────────────────────────────────────
   const handlePhone = async () => {
     const p = fmt();
     setLoading(true); setError(null);
     try {
-      const { data } = await api.post('/auth/login/', { phone: p });
-      const payload = data?.data || data || {};
       if (mode === 'login') {
+        const { data } = await api.post('/auth/login/', { phone: p });
+        const payload = data?.data || data || {};
         if (payload?.tokens?.access || payload?.authToken || payload?.access || payload?.access_token || payload?.token) { _save(data); _go(); return; }
         if (String(payload?.action || '').toUpperCase() === 'REGISTER') {
           setError("Aucun compte avec ce numéro. Créez d'abord votre compte.");
@@ -67,11 +86,7 @@ export const Login: React.FC = () => {
         }
         setStep('otp'); toast.info(`Code envoyé au ${p}`);
       } else {
-        if (String(payload?.action || '').toUpperCase() === 'LOGIN') {
-          setError("Ce numéro est déjà inscrit. Connectez-vous à la place.");
-          setMode('login');
-          return;
-        }
+        await requestOtp(p, 'register');
         setStep('otp'); toast.info(`Code envoyé au ${p}`);
       }
     } catch (err: any) {
@@ -501,6 +516,12 @@ export const Login: React.FC = () => {
                 >
                   ← Modifier le numéro de téléphone
                 </button>
+                {step === 'otp' && (
+                  <button type="button" disabled={loading} onClick={resendOtp}
+                    className="block mx-auto mt-2 text-[11px] font-bold text-[#18bfd6] hover:underline disabled:opacity-50">
+                    Renvoyer un nouveau code
+                  </button>
+                )}
                 {step === 'otp' && mode === 'login' && (
                   <button type="button" onClick={() => { setStep('password'); setOtpCode(''); }}
                     className="block mx-auto mt-2 text-[11px] font-bold text-[#18bfd6] hover:underline">
