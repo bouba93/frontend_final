@@ -113,11 +113,13 @@ export const News: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>('Tous');
 
   useEffect(() => {
-    setItems(PRESET_NEWS);
-    setLoading(false);
+    getNews().then(remote => {
+      const ids = new Set(remote.map((item: any) => String(item.id)));
+      setItems([...remote, ...PRESET_NEWS.filter(item => !ids.has(String(item.id)))] as NewsArticle[]);
+    }).catch(() => setItems(PRESET_NEWS)).finally(() => setLoading(false));
   }, []);
 
-  const categories = ['Tous', 'Examens Nationaux'];
+  const categories = ['Tous', ...Array.from(new Set(items.map(item => item.category).filter(Boolean)))];
   const filteredArticles = categoryFilter === 'Tous' 
     ? items 
     : items.filter(a => a.category.toLowerCase().includes(categoryFilter.slice(0, 5).toLowerCase()) || categoryFilter.toLowerCase().includes(a.category.slice(0, 5).toLowerCase()));

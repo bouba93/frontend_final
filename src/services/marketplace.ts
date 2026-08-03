@@ -12,7 +12,13 @@ export const getProducts = async (filters?: Record<string, any>) => {
 };
 
 export const redeemProduct = async (productId: string, quantity = 1) => {
-  const { data } = await api.post('/marketplace/orders/redeem', { product_id: productId, quantity });
+  const numericProductId = Number(productId);
+  const numericQuantity = Number(quantity);
+  if (!Number.isInteger(numericProductId) || numericProductId <= 0) throw new Error('product_id invalide.');
+  if (!Number.isInteger(numericQuantity) || numericQuantity <= 0) throw new Error('quantity invalide.');
+  const { data } = await api.post('/marketplace/orders/redeem', {
+    items: [{ product_id: numericProductId, quantity: numericQuantity }],
+  });
   return data?.data || data;
 };
 

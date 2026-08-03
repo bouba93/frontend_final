@@ -1,13 +1,13 @@
 import { api } from '../config/api';
 import { unsupportedXanoEndpoint } from '../config/xanoRoutes';
 
-export type TicketCategory = 'PAIEMENT' | 'TECHNIQUE' | 'CONTENU' | 'ABONNEMENT' | 'AUTRE';
+export type TicketCategory = 'TECHNICAL' | 'PAYMENT';
 export type TicketStatus = 'OUVERT' | 'EN_COURS' | 'RESOLU' | 'FERME';
 
 export interface Ticket {
   id: string;
-  title: string;
-  description: string;
+  subject: string;
+  message: string;
   category: TicketCategory;
   status: TicketStatus;
   priority: 1 | 2 | 3;
@@ -20,12 +20,15 @@ export async function getTickets(_status?: TicketStatus): Promise<Ticket[]> {
 }
 
 export async function createTicket(payload: {
-  title: string;
-  description: string;
+  subject: string;
+  message: string;
   category: TicketCategory;
-  priority?: 1 | 2 | 3;
 }): Promise<Ticket> {
-  const { data } = await api.post('/support/tickets', payload);
+  const { data } = await api.post('/support/tickets', {
+    category: payload.category,
+    subject: payload.subject,
+    message: payload.message,
+  });
   return data?.data || data;
 }
 

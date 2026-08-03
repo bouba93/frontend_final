@@ -3,10 +3,15 @@ import { getMe, logout as djangoLogout } from '../services/auth';
 
 interface UserProfile {
   uid: string; email: string; role: string; name: string;
+  firstName?: string; lastName?: string; displayName?: string;
   phone?: string; interests: string[]; onboardingCompleted: boolean;
   isApproved?: boolean; points?: number; subscriptionPlan?: string;
   activeAddons?: string[];
   city?: string;
+  avatar?: string;
+  bio?: string;
+  schoolLevel?: string;
+  serie?: string;
   shopName?: string;
   shopDescription?: string;
 }
@@ -38,6 +43,7 @@ const mapProfile = (data: any): UserProfile => {
 
   let rawRole = (d.role || p.role || 'student').toLowerCase();
   if (rawRole === 'tutor' || rawRole === 'teacher') rawRole = 'repetiteur';
+  if (rawRole === 'vendor' || rawRole === 'seller') rawRole = 'seller';
   if (rawRole === 'superadmin') rawRole = 'admin';
 
   const phone = d.phone || d.username || '';
@@ -47,6 +53,9 @@ const mapProfile = (data: any): UserProfile => {
     email: d.email || phone || '',
     phone,
     role:  rawRole,
+    firstName: p.first_name || d.first_name || '',
+    lastName: p.last_name || d.last_name || '',
+    displayName: p.display_name || d.display_name || '',
     name:  p.first_name
       ? `${p.first_name} ${p.last_name || ''}`.trim()
       : (phone || 'Utilisateur'),
@@ -63,6 +72,10 @@ const mapProfile = (data: any): UserProfile => {
     subscriptionPlan: d.subscription_plan || 'free',
     activeAddons:     d.active_addons || [],
     city:             p.city || d.city || '',
+    avatar:           p.avatar_url || p.avatar?.url || p.avatar || d.avatar_url || d.avatar?.url || d.avatar || '',
+    bio:              p.bio || d.bio || '',
+    schoolLevel:      p.school_level || d.school_level || '',
+    serie:            p.serie || d.serie || '',
     shopName:         p.shop_name || d.shop_name || '',
     shopDescription:  p.shop_description || d.shop_description || '',
   };

@@ -7,12 +7,31 @@ const asList = (data: any): any[] => {
 };
 
 export const getNews = async () => {
-  try { const { data } = await api.get('/content/news/'); return asList(data); }
+  try {
+    const { data } = await api.get('/content/news/');
+    return asList(data).map((item: any) => ({
+      ...item,
+      excerpt: item.excerpt || item.summary || item.content || '',
+      date: item.date || item.published_at || item.created_at,
+      source: item.source || 'Kharandi',
+      color: item.color || 'bg-cyan-50 text-primary border-cyan-100',
+      image: item.image || item.cover_image || '',
+    }));
+  }
   catch { return []; }
 };
 
 export const getSchoolRankings = async () => {
-  try { const { data } = await api.get('/content/school-rankings/'); return asList(data); }
+  try {
+    const { data } = await api.get('/content/school-rankings/');
+    return asList(data).map((item: any) => ({
+      ...item,
+      name: item.name || item.school?.name || item.school_name || `École #${item.school_id}`,
+      location: item.location || item.school?.city || item.city,
+      school_type: item.school_type || item.school?.type || item.exam_type,
+      score: item.score ?? item.success_rate ?? (item.candidates_count ? Math.round(Number(item.admitted_count || 0) * 100 / Number(item.candidates_count)) : 0),
+    }));
+  }
   catch { return []; }
 };
 
@@ -23,7 +42,14 @@ export const getScholarships = async () => {
   try {
     const { data } = await api.get('/content/scholarships/');
     const list = asList(data);
-    return list.length ? list : MOCK_SCHOLARSHIPS;
+    return list.length ? list.map((item: any) => ({
+      ...item,
+      university: item.university || item.organization || '',
+      program_name: item.program_name || item.title || '',
+      excerpt: item.excerpt || item.description || '',
+      level: item.level || item.school_levels?.join(', ') || '',
+      link: item.link || item.official_url || '',
+    })) : MOCK_SCHOLARSHIPS;
   } catch { return MOCK_SCHOLARSHIPS; }
 };
 
@@ -33,13 +59,13 @@ export const getResults = async () => {
 };
 
 export const searchOfficialResults = async (params: { q: string; exam?: string; year?: number; filter?: string; limit?: number }): Promise<any> => {
-  const { exam, limit, filter, ...rest } = params;
+  const { exam } = params;
   const { data } = await api.get('/results/', {
     params: {
-      ...rest,
-      exam_type: exam === 'BEPC' ? 'BEPC_EG' : exam,
-      search_field: filter,
-      page_size: limit,
+      q: params.q,
+      exam_type: exam,
+      ...(params.year ? { year: params.year } : {}),
+      ...(params.filter === 'centre' ? { centre: params.q } : {}),
     },
   });
   return asList(data);
@@ -68,7 +94,10 @@ export const getReadingProgress = async (documentId: string) => {
 };
 export const saveReadingProgress = async (documentId: string, progress: number, isRead = false) => {
   const value = { progress, is_read: isRead };
-  const { data } = await api.post(`/content/reading-progress/${encodeURIComponent(documentId)}/`, value);
+  const { data } = await api.post(`/content/reading-progress/${encodeURIComponent(documentId)}/`, {
+    progress_percent: Math.max(0, Math.min(100, Math.round(progress))),
+    last_position: isRead ? 'COMPLETED' : String(Math.round(progress)),
+  });
   localStorage.setItem(progressKey(documentId), JSON.stringify(value));
   return data?.data || data || value;
 };

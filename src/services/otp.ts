@@ -6,7 +6,8 @@ import { saveAuthSession } from "../lib/authSession";
  * @param phone  Numéro au format +224XXXXXXXXX
  */
 export async function sendOTP(phone: string, purpose: "LOGIN" | "REGISTER" | "RESET" = "LOGIN"): Promise<void> {
-  await api.post("/auth/otp/send/", { phone, purpose });
+  void purpose;
+  await api.post("/auth/login/", { phone });
 }
 
 /**
@@ -15,7 +16,7 @@ export async function sendOTP(phone: string, purpose: "LOGIN" | "REGISTER" | "RE
  * @param code   Code à 6 chiffres reçu par SMS
  */
 export async function verifyOTP(phone: string, code: string) {
-  const { data } = await api.post("/auth/login/verify/", { phone, code, purpose: "LOGIN" });
+  const { data } = await api.post("/auth/login/verify/", { phone, code });
 
   return saveAuthSession(data);
 }

@@ -28,7 +28,15 @@ export interface DocumentFilters {
 
 /** Liste paginée des documents avec injection locale sécurisée */
 export async function getDocuments(filters: DocumentFilters = {}): Promise<any> {
-  const params = { page_size: 100, ...filters };
+  const params = {
+    page_size: filters.page_size || 100,
+    ...(filters.page ? { page: filters.page } : {}),
+    ...(filters.level ? { level: filters.level } : {}),
+    ...(filters.doc_type ? { document_type: filters.doc_type } : {}),
+    ...(filters.subject ? { subject_id: filters.subject } : {}),
+    ...(filters.is_free !== undefined ? { is_free: filters.is_free } : {}),
+    ...(filters.search ? { q: filters.search } : {}),
+  };
   let results: any[] = [];
   try {
     const { data } = await api.get("/learning/documents/", { params });

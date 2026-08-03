@@ -38,11 +38,16 @@ api.interceptors.response.use(r => r, async (error) => {
     original._retry = true; isRefreshing = true;
     try {
       const { data } = await axios.post(`${BASE_URL}/auth/token/refresh/`, { refresh });
-      localStorage.setItem("access_token", data.access);
-      localStorage.setItem("refresh_token", data.refresh || refresh);
-      api.defaults.headers.common.Authorization = `Bearer ${data.access}`;
-      original.headers.Authorization = `Bearer ${data.access}`;
-      processQueue(null, data.access); return api(original);
+      const payload = data?.data || data || {};
+      const tokens = payload.tokens || {};
+      const access = tokens.access || payload.access || payload.access_token || payload.authToken || payload.token;
+      const nextRefresh = tokens.refresh || payload.refresh || payload.refresh_token || refresh;
+      if (!access) throw new Error("Le rafraîchissement Xano n'a retourné aucun jeton d'accès.");
+      localStorage.setItem("access_token", String(access));
+      localStorage.setItem("refresh_token", String(nextRefresh));
+      api.defaults.headers.common.Authorization = `Bearer ${access}`;
+      original.headers.Authorization = `Bearer ${access}`;
+      processQueue(null, String(access)); return api(original);
     } catch (e) { processQueue(e, null); _logout(); return Promise.reject(e); }
     finally { isRefreshing = false; }
   }

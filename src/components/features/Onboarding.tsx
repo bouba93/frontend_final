@@ -60,6 +60,13 @@ const schoolLevels = [
   'Primaire', 'Collège', 'Lycée', 'Terminale', 'Université', 'Autre'
 ];
 
+const schoolSeries = [
+  'Sciences Expérimentales', 'Sciences Mathématiques', 'Sciences Sociales',
+  'TSE', 'TSS', 'SE', 'SM', 'Autre'
+];
+
+const tutorLevelOptions = ['Primaire', 'Collège', 'Lycée', 'Terminale', 'Université'];
+
 export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onComplete }) => {
   const { userProfile, logout, refreshProfile } = useAuth();
   
@@ -83,10 +90,17 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
   });
   
   // Profil States
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState(() => sessionStorage.getItem('onboarding_first_name') || '');
+  const [lastName, setLastName] = useState(() => sessionStorage.getItem('onboarding_last_name') || '');
   const [zone, setZone] = useState<string>('');
   const [schoolLevel, setSchoolLevel] = useState('Terminale');
+  const [serie, setSerie] = useState('');
+
+  // Tutor States
+  const [tutorSubjects, setTutorSubjects] = useState('');
+  const [tutorLevels, setTutorLevels] = useState<string[]>([]);
+  const [hourlyPrice, setHourlyPrice] = useState('');
+  const [yearsExperience, setYearsExperience] = useState('');
   
   // Tutor States (KYC)
   const [kycFileName, setKycFileName] = useState('');
@@ -110,7 +124,10 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
 
   // Load name and shop details if present in auth profile
   useEffect(() => {
-    if (userProfile?.name) {
+    if (userProfile?.firstName || userProfile?.lastName) {
+      if (userProfile.firstName) setFirstName(userProfile.firstName);
+      if (userProfile.lastName) setLastName(userProfile.lastName);
+    } else if (userProfile?.name) {
       const parts = userProfile.name.split(' ');
       if (parts.length > 0) setFirstName(parts[0]);
       if (parts.length > 1) setLastName(parts.slice(1).join(' '));
@@ -194,6 +211,19 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
       return;
     }
 
+    if (role === 'student' && ['Lycée', 'Terminale'].includes(schoolLevel) && !serie) {
+      toast.error("Veuillez choisir votre série.");
+      return;
+    }
+
+    if (role === 'repetiteur' && (
+      !tutorSubjects.trim() || tutorLevels.length === 0 ||
+      Number(hourlyPrice) <= 0 || Number(yearsExperience) < 0 || yearsExperience === ''
+    )) {
+      toast.error("Complétez les matières, niveaux, tarif horaire et années d’expérience.");
+      return;
+    }
+
     if (role === 'seller') {
       if (!shopName.trim() || !zone) {
         toast.error("Veuillez remplir le nom et le quartier de votre boutique.");
@@ -215,7 +245,7 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
       const backendRole = role === 'student' ? 'STUDENT' : 
                           role === 'parent' ? 'PARENT' : 
                           role === 'repetiteur' ? 'TUTOR' : 
-                          role === 'seller' ? 'SELLER' : role;
+                          role === 'seller' ? 'VENDOR' : role;
 
       const encodedShopDescription = encodeContactsInDescription(
         shopDescription,
@@ -228,9 +258,17 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
       await updateProfile({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
+        display_name: `${firstName.trim()} ${lastName.trim()}`,
         role: backendRole || undefined,
         city: zone || undefined,
         school_level: role === 'student' ? schoolLevel : undefined,
+        serie: role === 'student' && serie ? serie : undefined,
+        subjects: role === 'repetiteur'
+          ? tutorSubjects.split(',').map(subject => subject.trim()).filter(Boolean)
+          : undefined,
+        levels: role === 'repetiteur' ? tutorLevels : undefined,
+        hourly_price: role === 'repetiteur' ? Number(hourlyPrice) : undefined,
+        years_experience: role === 'repetiteur' ? Number(yearsExperience) : undefined,
         kyc_document: role === 'repetiteur' ? kycImage : undefined,
         shop_name: role === 'seller' ? shopName.trim() : undefined,
         shop_description: role === 'seller' ? encodedShopDescription : undefined,
@@ -260,7 +298,7 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
       const backendRole = role === 'student' ? 'STUDENT' : 
                           role === 'parent' ? 'PARENT' : 
                           role === 'repetiteur' ? 'TUTOR' : 
-                          role === 'seller' ? 'SELLER' : role;
+                          role === 'seller' ? 'VENDOR' : role;
 
       const encodedShopDescription = encodeContactsInDescription(
         shopDescription,
@@ -272,9 +310,17 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
       await updateProfile({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
+        display_name: `${firstName.trim()} ${lastName.trim()}`,
         role: backendRole || undefined,
         city: zone || undefined,
         school_level: role === 'student' ? schoolLevel : undefined,
+        serie: role === 'student' && serie ? serie : undefined,
+        subjects: role === 'repetiteur'
+          ? tutorSubjects.split(',').map(subject => subject.trim()).filter(Boolean)
+          : undefined,
+        levels: role === 'repetiteur' ? tutorLevels : undefined,
+        hourly_price: role === 'repetiteur' ? Number(hourlyPrice) : undefined,
+        years_experience: role === 'repetiteur' ? Number(yearsExperience) : undefined,
         kyc_document: role === 'repetiteur' ? kycImage : undefined,
         shop_name: role === 'seller' ? shopName.trim() : undefined,
         shop_description: role === 'seller' ? encodedShopDescription : undefined,
@@ -283,7 +329,10 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
 
       toast.success("Profil configuré avec succès !");
       
-      sessionStorage.clear();
+      sessionStorage.removeItem('onboarding_step');
+      sessionStorage.removeItem('onboarding_role');
+      sessionStorage.removeItem('onboarding_first_name');
+      sessionStorage.removeItem('onboarding_last_name');
       
       // Wait a bit to ensure backend consistency before parent reload
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -460,30 +509,133 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
 
                 {/* Student specific fields */}
                 {role === 'student' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Niveau Scolaire</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {schoolLevels.map(lvl => (
-                        <button
-                          type="button"
-                          key={lvl}
-                          onClick={() => setSchoolLevel(lvl)}
-                          className={`p-3 rounded-xl border-2 text-xs font-bold transition-all duration-300 text-center ${
-                            schoolLevel === lvl 
-                              ? 'border-[#8B5CF6] bg-[#8B5CF6]/5 text-[#8B5CF6]' 
-                              : 'border-slate-100 bg-slate-50 text-slate-600 hover:border-slate-300'
-                          }`}
-                        >
-                          {lvl}
-                        </button>
-                      ))}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Niveau scolaire</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {schoolLevels.map(lvl => (
+                          <button
+                            type="button"
+                            key={lvl}
+                            onClick={() => { setSchoolLevel(lvl); if (!['Lycée', 'Terminale'].includes(lvl)) setSerie(''); }}
+                            className={`p-3 rounded-xl border-2 text-xs font-bold transition-all duration-300 text-center ${
+                              schoolLevel === lvl
+                                ? 'border-[#8B5CF6] bg-[#8B5CF6]/5 text-[#8B5CF6]'
+                                : 'border-slate-100 bg-slate-50 text-slate-600 hover:border-slate-300'
+                            }`}
+                          >
+                            {lvl}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+
+                    {['Lycée', 'Terminale'].includes(schoolLevel) && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                          Série <span className="text-red-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {schoolSeries.map(value => (
+                            <button
+                              type="button"
+                              key={value}
+                              onClick={() => setSerie(value)}
+                              className={`p-3 rounded-xl border-2 text-xs font-bold transition-all text-center ${
+                                serie === value
+                                  ? 'border-[#8B5CF6] bg-[#8B5CF6]/5 text-[#8B5CF6]'
+                                  : 'border-slate-100 bg-slate-50 text-slate-600 hover:border-slate-300'
+                              }`}
+                            >
+                              {value}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {/* Repetiteur specific fields (KYC Required) */}
                 {role === 'repetiteur' && (
                   <div className="border border-slate-100 rounded-3xl p-5 bg-slate-50/50 space-y-4">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                          Matières enseignées <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ex : Mathématiques, Physique, Français"
+                          value={tutorSubjects}
+                          onChange={e => setTutorSubjects(e.target.value)}
+                          className="w-full p-3 rounded-xl bg-white border border-slate-200 focus:border-primary outline-none text-xs font-bold text-slate-800"
+                        />
+                        <p className="mt-1 text-[10px] font-semibold text-slate-400">Séparez les matières par des virgules.</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-2">
+                          Niveaux couverts <span className="text-red-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {tutorLevelOptions.map(value => {
+                            const selected = tutorLevels.includes(value);
+                            return (
+                              <button
+                                type="button"
+                                key={value}
+                                onClick={() => setTutorLevels(current => selected
+                                  ? current.filter(item => item !== value)
+                                  : [...current, value])}
+                                className={`p-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
+                                  selected
+                                    ? 'border-primary bg-primary/5 text-primary'
+                                    : 'border-slate-100 bg-white text-slate-600 hover:border-slate-300'
+                                }`}
+                              >
+                                {value}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                            Prix horaire (GNF) <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min="1"
+                            step="1000"
+                            placeholder="Ex : 50000"
+                            value={hourlyPrice}
+                            onChange={e => setHourlyPrice(e.target.value)}
+                            className="w-full p-3 rounded-xl bg-white border border-slate-200 focus:border-primary outline-none text-xs font-bold text-slate-800"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                            Années d’expérience <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min="0"
+                            max="80"
+                            placeholder="Ex : 3"
+                            value={yearsExperience}
+                            onChange={e => setYearsExperience(e.target.value)}
+                            className="w-full p-3 rounded-xl bg-white border border-slate-200 focus:border-primary outline-none text-xs font-bold text-slate-800"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="flex items-start gap-2 text-amber-600">
                       <Lock size={18} className="shrink-0 mt-0.5" />
                       <div className="space-y-1">

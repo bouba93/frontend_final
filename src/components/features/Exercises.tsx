@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { startExercise, submitExercise, ExerciseAttempt } from '../../services/exercises';
 import { useAuth } from '../../contexts/AuthContext';
+import { globalSearch } from '../../services/search';
 
 const EXAMS = {
   CEE: { label: 'Entrée en 7ème', description: 'Certificat d’Études Élémentaires', series: '', subjects: ['Mathématiques', 'Français', 'Histoire-Géographie', 'SVT'] },
@@ -14,7 +15,7 @@ const EXAMS = {
 } as const;
 
 type ExamKey = keyof typeof EXAMS;
-type Step = 'exam' | 'year' | 'subject' | 'playing' | 'result';
+type Step = 'exam' | 'year' | 'subject' | 'qcm' | 'playing' | 'result';
 const YEARS = Array.from({ length: 25 }, (_, index) => new Date().getFullYear() - index);
 
 export const Exercises: React.FC = () => {
@@ -23,6 +24,8 @@ export const Exercises: React.FC = () => {
   const [exam, setExam] = useState<ExamKey | null>(null);
   const [year, setYear] = useState<number | null>(null);
   const [subject, setSubject] = useState<string | null>(null);
+  const [qcmOptions, setQcmOptions] = useState<Array<{ id: string | number; subject?: string; topic?: string }>>([]);
+  const [qcmId, setQcmId] = useState('');
   const [attempt, setAttempt] = useState<ExerciseAttempt | null>(null);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
@@ -43,23 +46,29 @@ export const Exercises: React.FC = () => {
 
   const reset = () => {
     setStep('exam'); setExam(null); setYear(null); setSubject(null); setAttempt(null);
-    setIndex(0); setAnswers({}); setResult(null); setError(''); setTimeLeft(60);
+    setQcmOptions([]); setQcmId(''); setIndex(0); setAnswers({}); setResult(null); setError(''); setTimeLeft(60);
   };
 
-  const launch = async (selectedSubject: string) => {
+  const chooseSubject = async (selectedSubject: string) => {
     if (!exam || !year) return;
     setSubject(selectedSubject); setLoading(true); setError('');
     try {
-      const examInfo = EXAMS[exam];
-      const data = await startExercise({
-        exam: exam.startsWith('BAC') ? 'BAC' : exam,
-        series: examInfo.series || undefined,
-        year,
-        subject: selectedSubject,
-        difficulty: 'MOYEN',
-      });
+      const response = await globalSearch(`${EXAMS[exam].label} ${year} ${selectedSubject}`, 'qcm', 50);
+      const options = Array.isArray(response?.qcm) ? response.qcm : [];
+      setQcmOptions(options);
+      if (options.length === 1) setQcmId(String(options[0].id));
+      setStep('qcm');
+    } catch {
+      setQcmOptions([]); setStep('qcm');
+    } finally { setLoading(false); }
+  };
+
+  const launch = async (selectedQcmId: string | number) => {
+    setLoading(true); setError('');
+    try {
+      const data = await startExercise(selectedQcmId);
       if (!data.attempt_id || !data.questions.length) throw new Error('Aucune question retournée');
-      setAttempt(data); setAnswers({}); setIndex(0); setTimeLeft(60); setStep('playing');
+      setQcmId(String(selectedQcmId)); setAttempt(data); setAnswers({}); setIndex(0); setTimeLeft(60); setStep('playing');
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.response?.data?.error || "Impossible de démarrer l'exercice depuis Xano.";
       setError(message); toast.error(message);
@@ -112,7 +121,7 @@ export const Exercises: React.FC = () => {
             <div className="rounded-2xl bg-amber-50 p-4"><Star className="mx-auto text-amber-500 mb-1" /><p className="text-2xl font-black">{result.mention || (percentage >= 70 ? 'Bravo' : 'Continue')}</p><p className="text-xs text-slate-400">appréciation</p></div>
           </div>
           <p className="mt-5 text-xs text-slate-400">Le score et les points ont été calculés côté serveur. Aucune réponse correcte n'est envoyée avant la soumission.</p>
-          <div className="mt-6 flex gap-3"><button onClick={() => subject && launch(subject)} className="flex-1 rounded-2xl bg-slate-100 py-3 font-black text-slate-700 flex items-center justify-center gap-2"><RotateCcw size={16} /> Refaire</button><button onClick={reset} className="flex-1 rounded-2xl bg-primary py-3 font-black text-white">Autre exercice</button></div>
+          <div className="mt-6 flex gap-3"><button onClick={() => qcmId && launch(qcmId)} className="flex-1 rounded-2xl bg-slate-100 py-3 font-black text-slate-700 flex items-center justify-center gap-2"><RotateCcw size={16} /> Refaire</button><button onClick={reset} className="flex-1 rounded-2xl bg-primary py-3 font-black text-white">Autre exercice</button></div>
         </motion.div>
       </div>
     );
@@ -144,7 +153,32 @@ export const Exercises: React.FC = () => {
       {error && <div className="mb-5 rounded-2xl bg-red-50 border border-red-100 p-4 text-red-700 flex gap-3"><AlertCircle className="shrink-0" /> {error}</div>}
       {step === 'exam' && <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{Object.entries(EXAMS).map(([key, item]) => <button key={key} onClick={() => { setExam(key as ExamKey); setStep('year'); }} className="rounded-[26px] bg-white border border-slate-100 p-6 text-left shadow-sm hover:shadow-lg transition-all"><div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary grid place-items-center mb-4">{key === 'CEE' ? <BookOpen /> : key === 'BEPC' ? <Calculator /> : <GraduationCap />}</div><h3 className="text-xl font-black text-slate-900">{item.label}</h3><p className="mt-1 text-sm text-slate-400">{item.description}</p></button>)}</div>}
       {step === 'year' && <div><button onClick={() => setStep('exam')} className="mb-5 flex gap-2 text-sm font-bold text-slate-500"><ArrowLeft size={17} /> Retour</button><h2 className="text-2xl font-black mb-5">Choisis l'année</h2><div className="grid grid-cols-3 sm:grid-cols-5 gap-3">{YEARS.map(value => <button key={value} onClick={() => { setYear(value); setStep('subject'); }} className="rounded-2xl border border-slate-100 bg-white py-4 font-black hover:bg-primary hover:text-white">{value}</button>)}</div></div>}
-      {step === 'subject' && exam && <div><button onClick={() => setStep('year')} className="mb-5 flex gap-2 text-sm font-bold text-slate-500"><ArrowLeft size={17} /> Retour</button><h2 className="text-2xl font-black mb-5">Choisis la matière</h2><div className="grid sm:grid-cols-2 gap-3">{EXAMS[exam].subjects.map(item => <button key={item} onClick={() => launch(item)} className="rounded-2xl border border-slate-100 bg-white p-5 font-black text-left hover:border-primary hover:text-primary flex items-center justify-between"><span>{item}</span><ArrowRight size={18} /></button>)}</div></div>}
+      {step === 'subject' && exam && <div><button onClick={() => setStep('year')} className="mb-5 flex gap-2 text-sm font-bold text-slate-500"><ArrowLeft size={17} /> Retour</button><h2 className="text-2xl font-black mb-5">Choisis la matière</h2><div className="grid sm:grid-cols-2 gap-3">{EXAMS[exam].subjects.map(item => <button key={item} onClick={() => chooseSubject(item)} className="rounded-2xl border border-slate-100 bg-white p-5 font-black text-left hover:border-primary hover:text-primary flex items-center justify-between"><span>{item}</span><ArrowRight size={18} /></button>)}</div></div>}
+      {step === 'qcm' && (
+        <div>
+          <button onClick={() => setStep('subject')} className="mb-5 flex gap-2 text-sm font-bold text-slate-500"><ArrowLeft size={17} /> Retour</button>
+          <h2 className="text-2xl font-black">Choisis un QCM</h2>
+          <p className="mt-1 text-sm text-slate-500">Chaque test utilise son identifiant `qcm_id` Xano.</p>
+          {qcmOptions.length > 0 && (
+            <div className="mt-5 grid sm:grid-cols-2 gap-3">
+              {qcmOptions.map(option => (
+                <button key={option.id} onClick={() => launch(option.id)} className="rounded-2xl border border-slate-100 bg-white p-5 text-left hover:border-primary">
+                  <p className="font-black text-slate-900">{option.topic || option.subject || `QCM #${option.id}`}</p>
+                  <p className="mt-1 text-xs font-bold text-primary">ID Xano : {option.id}</p>
+                </button>
+              ))}
+            </div>
+          )}
+          <form onSubmit={event => { event.preventDefault(); if (qcmId) launch(qcmId); }} className="mt-6 rounded-3xl border border-slate-100 bg-white p-5">
+            <label className="text-xs font-black uppercase tracking-wider text-slate-500">Identifiant QCM</label>
+            <div className="mt-2 flex gap-2">
+              <input type="number" min="1" required value={qcmId} onChange={event => setQcmId(event.target.value)} placeholder="Ex : 12" className="flex-1 rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-primary" />
+              <button className="rounded-xl bg-primary px-5 py-3 font-black text-white">Démarrer</button>
+            </div>
+            {!qcmOptions.length && <p className="mt-2 text-xs text-amber-600">Aucun QCM trouvé par la recherche. Saisissez l’ID publié dans Xano.</p>}
+          </form>
+        </div>
+      )}
     </div>
   );
 };

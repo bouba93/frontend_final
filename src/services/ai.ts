@@ -3,34 +3,45 @@
  */
 import { api } from "../config/api";
 
+export interface AIResponse {
+  answer: string;
+  conversation_id?: number;
+}
+
+const normalizeAIResponse = (data: any): AIResponse => {
+  const payload = data?.data || data || {};
+  return {
+    answer: String(payload?.answer || payload?.reply || payload?.message || payload?.content || ''),
+    conversation_id: payload?.conversation_id !== undefined
+      ? Number(payload.conversation_id)
+      : payload?.conversation?.id !== undefined
+        ? Number(payload.conversation.id)
+        : undefined,
+  };
+};
+
 // ─── Chat texte ────────────────────────────────────────────────────────────
 export async function askAI(
   message: string,
-  history: { role: "user" | "assistant"; content: string }[] = []
-) {
-  const { data } = await api.post("/ai/ask", { message, history });
-  const payload = data?.data || data;
-  return payload?.answer || payload?.reply || payload?.message || payload?.content || payload;
+  conversationId?: number,
+): Promise<AIResponse> {
+  const { data } = await api.post("/ai/ask", {
+    message,
+    ...(conversationId ? { conversation_id: conversationId } : {}),
+  });
+  return normalizeAIResponse(data);
 }
 
 // ─── Analyse d'image (photo devoir, schéma) ────────────────────────────────
 export async function askAIImage(
-  imageOrUrl: File | string,
-  question = "Explique et corrige ce document scolaire."
-) {
-  if (typeof imageOrUrl === "string") {
-    const { data } = await api.post("/ai/ask-image", {
-      image_url: imageOrUrl, question,
-    });
-    const payload = data?.data || data;
-    return payload?.answer || payload?.reply || payload?.content || "";
-  }
+  image: File,
+  message = "Explique et corrige cet exercice scolaire.",
+): Promise<AIResponse> {
   const fd = new FormData();
-  fd.append("image",    imageOrUrl);
-  fd.append("question", question);
+  fd.append("image", image);
+  fd.append("message", message);
   const { data } = await api.post("/ai/ask-image", fd);
-  const payload = data?.data || data;
-  return payload?.answer || payload?.reply || payload?.content || "";
+  return normalizeAIResponse(data);
 }
 
 // ─── Générer QCM ───────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, X, Loader2, HelpCircle } from 'lucide-react';
+import { Send, X, Loader2, HelpCircle, ImagePlus } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -37,7 +37,10 @@ export const AITeacherChat: React.FC<AITeacherChatProps> = ({ onClose, initialMe
   ]);
   const [input,     setInput]     = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<number>();
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const messagesEndRef             = useRef<HTMLDivElement>(null);
+  const imageInputRef              = useRef<HTMLInputElement>(null);
   const initialSent                = useRef(false);
   const abortRef                   = useRef<AbortController | null>(null);
 
@@ -45,7 +48,7 @@ export const AITeacherChat: React.FC<AITeacherChatProps> = ({ onClose, initialMe
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const callAIStream = async (userText: string, currentMessages: Message[]) => {
+  const callAIStream = async (userText: string, image?: File | null) => {
     setIsLoading(true);
 
     const aiMsgId = (Date.now() + 1).toString();
@@ -54,18 +57,14 @@ export const AITeacherChat: React.FC<AITeacherChatProps> = ({ onClose, initialMe
     }]);
 
     try {
-      const history = currentMessages
-        .filter(m => m.id !== '1' && !m.streaming)
-        .map(m => ({
-          role:    (m.role === 'model' ? 'assistant' : 'user') as 'assistant' | 'user',
-          content: m.content,
-        }));
-
       abortRef.current = new AbortController();
-      const { askAI } = await import('../../services/ai');
-      const reply = await askAI(userText, history);
+      const { askAI, askAIImage } = await import('../../services/ai');
+      const response = image
+        ? await askAIImage(image, userText)
+        : await askAI(userText, conversationId);
+      if (response.conversation_id) setConversationId(response.conversation_id);
       setMessages(prev => prev.map(m =>
-        m.id === aiMsgId ? { ...m, content: String(reply || "Désolé, je n'ai pas pu répondre."), streaming: false } : m
+        m.id === aiMsgId ? { ...m, content: response.answer || "Désolé, je n'ai pas pu répondre.", streaming: false } : m
       ));
 
     } catch (err: any) {
@@ -82,7 +81,8 @@ export const AITeacherChat: React.FC<AITeacherChatProps> = ({ onClose, initialMe
   };
 
   const handleSend = async (overrideInput?: string) => {
-    const text = (overrideInput || input).trim();
+    const image = selectedImage;
+    const text = (overrideInput || input).trim() || (image ? 'Explique et corrige cet exercice.' : '');
     if (!text || isLoading) return;
 
     if (isGuest) {
@@ -91,11 +91,16 @@ export const AITeacherChat: React.FC<AITeacherChatProps> = ({ onClose, initialMe
       localStorage.setItem('guest_ai_requests', String(n + 1));
     }
 
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text };
+    const userMsg: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: image ? `${text}\n\n📷 ${image.name}` : text,
+    };
     const updated = [...messages, userMsg];
     setMessages(updated);
     setInput('');
-    await callAIStream(text, updated);
+    setSelectedImage(null);
+    await callAIStream(text, image);
   };
 
   useEffect(() => {
@@ -114,7 +119,7 @@ export const AITeacherChat: React.FC<AITeacherChatProps> = ({ onClose, initialMe
       { id: '1', role: 'model', content: WELCOME }, userMsg,
     ];
     setMessages(init);
-    setTimeout(() => callAIStream(prompt, init), 300);
+    setTimeout(() => callAIStream(prompt), 300);
   }, [initialMessage]); // eslint-disable-line
 
   useEffect(() => () => { abortRef.current?.abort(); }, []);
@@ -241,7 +246,32 @@ export const AITeacherChat: React.FC<AITeacherChatProps> = ({ onClose, initialMe
 
       {/* Input */}
       <div className="p-3 bg-white/90 backdrop-blur-xl border-t border-slate-100">
+        {selectedImage && (
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-2xl bg-primary/5 px-3 py-2 text-xs font-bold text-primary">
+            <span className="truncate">📷 {selectedImage.name}</span>
+            <button type="button" onClick={() => setSelectedImage(null)} aria-label="Retirer l'image">
+              <X size={15} />
+            </button>
+          </div>
+        )}
         <div className="flex items-center gap-2 bg-slate-50 rounded-[28px] border border-slate-200 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10 transition-all px-4 py-2">
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={event => setSelectedImage(event.target.files?.[0] || null)}
+          />
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.9 }}
+            onClick={() => imageInputRef.current?.click()}
+            disabled={isLoading}
+            className="text-slate-500 hover:text-primary disabled:opacity-40"
+            aria-label="Joindre une photo d'exercice"
+          >
+            <ImagePlus size={19} />
+          </motion.button>
           <input type="text" value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
@@ -249,7 +279,7 @@ export const AITeacherChat: React.FC<AITeacherChatProps> = ({ onClose, initialMe
             className="flex-1 bg-transparent text-[14px] focus:outline-none text-slate-900 placeholder:text-slate-400 font-bold" />
           <motion.button whileTap={{ scale: 0.9 }}
             onClick={() => handleSend()}
-            disabled={!input.trim() || isLoading}
+            disabled={(!input.trim() && !selectedImage) || isLoading}
             className="w-9 h-9 bg-primary text-white rounded-full flex items-center justify-center shrink-0 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shadow-sm">
             <Send size={16} className="ml-0.5" />
           </motion.button>

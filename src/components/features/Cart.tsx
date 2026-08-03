@@ -3,7 +3,6 @@ import { useCart } from '../../contexts/CartContext';
 import { Trash2, Loader2, Tag, X, ShoppingBag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { checkPromoCode } from '../../services/marketplace';
-import { createOrder } from '../../services/orders';
 import { initiatePayment } from '../../services/payments';
 import { toast } from 'sonner';
 
@@ -35,20 +34,21 @@ export const Cart: React.FC = () => {
     if (!token) { toast.error('Veuillez vous connecter pour commander.'); return; }
     setIsCheckingOut(true);
     try {
-      const orderData = await createOrder(
-        cart.map(item => ({ document_id: item.id, name: item.title, unit_price: item.price, quantity: (item as any).quantity || 1 })),
-        "GNF"
-      );
-      const orderId = orderData?.id || orderData?.order_id;
-      if (!orderId) throw new Error("La commande n'a pas été créée correctement.");
-      const payData = await initiatePayment({ order_id: orderId });
+      const productCodes = [...new Set(cart.map((item: any) => item.product_code || item.productCode || item.code).filter(Boolean))];
+      if (productCodes.length !== 1) {
+        throw new Error("Le paiement Xano requiert un seul product_code par transaction.");
+      }
+      const payData = await initiatePayment({
+        product_code: String(productCodes[0]),
+        quantity: cart.reduce((sum, item: any) => sum + Number(item.quantity || 1), 0),
+      });
       if (payData?.payment_url) {
         window.location.href = payData.payment_url;
       } else {
         toast.error("URL de paiement introuvable.");
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Erreur lors du checkout.");
+      toast.error(err.response?.data?.message || err.message || "Erreur lors du checkout.");
     } finally { setIsCheckingOut(false); }
   };
 

@@ -19,7 +19,7 @@ export const SupportTickets: React.FC = () => {
   const [isCreating,  setIsCreating]  = useState(false);
   const [subject,     setSubject]     = useState('');
   const [description, setDescription] = useState('');
-  const [category,    setCategory]    = useState<'PAIEMENT' | 'TECHNIQUE' | 'CONTENU' | 'ABONNEMENT' | 'AUTRE'>('AUTRE');
+  const [category,    setCategory]    = useState<'TECHNICAL' | 'PAYMENT'>('TECHNICAL');
   const [submitting,  setSubmitting]  = useState(false);
   const [error,       setError]       = useState<string | null>(null);
 
@@ -35,11 +35,11 @@ export const SupportTickets: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subject.trim()) { setError("Le sujet est obligatoire."); return; }
+    if (!subject.trim() || !description.trim()) { setError("Le sujet et la description sont obligatoires."); return; }
     setSubmitting(true); setError(null);
     try {
       const { createTicket } = await import('../../services/support');
-      await createTicket({ title: subject, description, category });
+      await createTicket({ subject, message: description, category });
       setSubject(''); setDescription(''); setIsCreating(false);
       toast.success("Ticket créé avec succès !");
       await fetchTickets();
@@ -82,16 +82,13 @@ export const SupportTickets: React.FC = () => {
                 <label className="text-xs font-bold text-slate-600 mb-1 block">Catégorie</label>
                 <select value={category} onChange={e => setCategory(e.target.value as any)}
                   className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary bg-white">
-                  <option value="TECHNIQUE">Problème technique</option>
-                  <option value="PAIEMENT">Paiement</option>
-                  <option value="ABONNEMENT">Abonnement</option>
-                  <option value="CONTENU">Contenu</option>
-                  <option value="AUTRE">Autre</option>
+                  <option value="TECHNICAL">Problème technique</option>
+                  <option value="PAYMENT">Paiement / Abonnement</option>
                 </select>
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-600 mb-1 block">Description</label>
-                <textarea value={description} onChange={e => setDescription(e.target.value)}
+                <textarea value={description} onChange={e => setDescription(e.target.value)} required
                   placeholder="Décrivez le problème en détail..."
                   className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary resize-none h-24" />
               </div>
@@ -116,7 +113,7 @@ export const SupportTickets: React.FC = () => {
           {tickets.map((t: any) => (
             <div key={t.id} className="bg-white rounded-[20px] border border-slate-100 p-5 shadow-sm">
               <div className="flex items-start justify-between gap-2 mb-2">
-                <p className="font-bold text-slate-900">{t.title}</p>
+                <p className="font-bold text-slate-900">{t.subject || t.title}</p>
                 <span className={`px-2 py-1 rounded-full text-xs font-bold shrink-0 ${STATUS_COLORS[t.status] || 'bg-gray-100 text-gray-500'}`}>
                   {STATUS_LABELS[t.status] || t.status}
                 </span>

@@ -13,14 +13,12 @@ export interface ExerciseAttempt {
   duration_seconds?: number;
 }
 
-export async function startExercise(payload: {
-  exam: string;
-  series?: string;
-  year: number;
-  subject: string;
-  difficulty?: string;
-}): Promise<ExerciseAttempt> {
-  const { data } = await api.post('/exercises/start', payload);
+export async function startExercise(qcmId: string | number): Promise<ExerciseAttempt> {
+  const numericId = Number(qcmId);
+  if (!Number.isInteger(numericId) || numericId <= 0) {
+    throw new Error('Identifiant QCM invalide.');
+  }
+  const { data } = await api.post('/exercises/start', { qcm_id: numericId });
   const result = data?.data || data;
   return {
     attempt_id: String(result.attempt_id || result.id),

@@ -1,17 +1,22 @@
 import React, { useState } from 'react';
-import { ChevronRight, ChevronLeft, CreditCard, BookOpen, Bell, Shield, Headphones, Info, LogOut, CheckCircle2, ShieldAlert, User, Mail, Phone, MapPin } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CreditCard, BookOpen, Bell, Shield, Headphones, Info, LogOut, CheckCircle2, ShieldAlert, User, Mail, Phone, MapPin, Camera } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../contexts/AuthContext';
-import { updateProfile } from '../../services/auth';
+import { updateProfile, uploadAvatar } from '../../services/auth';
+import { toast } from 'sonner';
 
 export const Profile: React.FC = () => {
   const [activeView, setActiveView] = useState<string | null>(null);
   const { userProfile, logout } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [editData, setEditData] = useState({
     name: userProfile?.name || '',
     phone: userProfile?.phone || '',
     address: userProfile?.city || '',
+    bio: userProfile?.bio || '',
+    schoolLevel: userProfile?.schoolLevel || '',
+    serie: userProfile?.serie || '',
   });
 
   React.useEffect(() => {
@@ -20,6 +25,9 @@ export const Profile: React.FC = () => {
         name: userProfile.name && userProfile.name !== 'Utilisateur' ? userProfile.name : '',
         phone: userProfile.phone || '',
         address: userProfile.city || '',
+        bio: userProfile.bio || '',
+        schoolLevel: userProfile.schoolLevel || '',
+        serie: userProfile.serie || '',
       });
     }
   }, [userProfile, isEditing]);
@@ -32,12 +40,19 @@ export const Profile: React.FC = () => {
       await updateProfile({
         first_name: firstName,
         last_name: lastName,
-        city: editData.address
+        city: editData.address,
+        bio: editData.bio,
+        school_level: editData.schoolLevel,
+        serie: editData.serie,
       });
+      if (avatarFile) await uploadAvatar(avatarFile);
+      setAvatarFile(null);
       setIsEditing(false);
       window.dispatchEvent(new CustomEvent('auth:reload-profile'));
+      toast.success('Profil mis à jour.');
     } catch (error) {
       console.error('Update profile error:', error);
+      toast.error("Le profil n'a pas pu être mis à jour.");
     }
   };
 
@@ -105,6 +120,15 @@ export const Profile: React.FC = () => {
             </div>
             
             <div className="max-w-2xl bg-white p-8 rounded-[32px] shadow-sm border border-gray-100 space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="h-20 w-20 overflow-hidden rounded-3xl bg-primary/10 grid place-items-center text-primary">
+                  {userProfile?.avatar ? <img src={userProfile.avatar} alt="Avatar" className="h-full w-full object-cover" /> : <User size={32} />}
+                </div>
+                <label className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold ${isEditing ? 'cursor-pointer bg-primary/10 text-primary' : 'cursor-not-allowed bg-slate-100 text-slate-400'}`}>
+                  <Camera size={17} /> {avatarFile?.name || 'Choisir un avatar'}
+                  <input type="file" accept="image/*" disabled={!isEditing} className="hidden" onChange={event => setAvatarFile(event.target.files?.[0] || null)} />
+                </label>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-bold text-gray-500 ml-1">Nom complet</label>
                 <div className="relative">
@@ -157,7 +181,7 @@ export const Profile: React.FC = () => {
                   <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                   <input 
                     type="tel" 
-                    disabled={!isEditing}
+                    disabled
                     value={editData.phone}
                     onChange={(e) => setEditData({...editData, phone: e.target.value})}
                     className="w-full p-4 pl-12 rounded-[20px] border border-gray-100 bg-gray-50 disabled:opacity-70 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-medium"
@@ -178,6 +202,22 @@ export const Profile: React.FC = () => {
                     className="w-full p-4 pl-12 rounded-[20px] border border-gray-100 bg-gray-50 disabled:opacity-70 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-medium"
                   />
                 </div>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-500 ml-1">Niveau scolaire</label>
+                  <input type="text" disabled={!isEditing} value={editData.schoolLevel} onChange={e => setEditData({...editData, schoolLevel: e.target.value})} placeholder="Ex. Terminale" className="w-full p-4 rounded-[20px] border border-gray-100 bg-gray-50 disabled:opacity-70 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-500 ml-1">Série</label>
+                  <input type="text" disabled={!isEditing} value={editData.serie} onChange={e => setEditData({...editData, serie: e.target.value})} placeholder="Ex. TSE" className="w-full p-4 rounded-[20px] border border-gray-100 bg-gray-50 disabled:opacity-70 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-gray-500 ml-1">Bio</label>
+                <textarea disabled={!isEditing} value={editData.bio} onChange={e => setEditData({...editData, bio: e.target.value})} placeholder="Parlez-nous de vous" className="w-full min-h-28 p-4 rounded-[20px] border border-gray-100 bg-gray-50 disabled:opacity-70 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none resize-y" />
               </div>
             </div>
           </motion.div>
@@ -593,4 +633,3 @@ export const Profile: React.FC = () => {
     </div>
   );
 };
-

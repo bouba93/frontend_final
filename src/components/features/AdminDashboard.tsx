@@ -25,7 +25,7 @@ import { api } from '../../config/api';
 import { ResultsImportAdmin } from './results/ResultsImportAdmin';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
-interface User { id: string; phone: string; role: string; is_active: boolean; date_joined: string; profile?: { first_name: string; last_name: string; city: string; school_level: string; }; }
+interface User { id: string; phone: string; role: string; is_active: boolean; date_joined: string; profile?: { first_name: string; last_name: string; city?: string; school_level?: string; }; }
 interface Plan { id: string; name: string; period: string; price: number; currency: string; features: string[]; is_active: boolean; }
 interface Transaction { id: string; reference: string; amount: number; currency: string; status: string; provider: string; created_at: string; user?: any; }
 interface Document { id: string; title: string; doc_type: string; subject?: { id?: string; name: string }; level: string; is_free: boolean; price?: number; has_certification?: boolean; downloads: number; external_url: string; description?: string; content?: string; }
@@ -34,6 +34,10 @@ interface Stats { total_users: number; active_subscriptions: number; total_reven
 
 // ─── Couleurs chart ─────────────────────────────────────────────────────────
 const COLORS = ['#18bfd6', '#fcb303', '#10b981', '#8b5cf6', '#ef4444', '#f59e0b'];
+const responseList = (response: any): any[] => {
+  const value = response?.data?.data ?? response?.data ?? response ?? [];
+  return Array.isArray(value) ? value : value?.items || value?.results || [];
+};
 
 // ─── Composant Badge statut ─────────────────────────────────────────────────
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
@@ -78,96 +82,46 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose, onRefresh,
       toast.error('Le numéro de téléphone est obligatoire.');
       return;
     }
+    if (!isEdit && password.length < 8) {
+      toast.error('Le mot de passe doit contenir au moins 8 caractères.');
+      return;
+    }
     setLoading(true);
-
-    toast.info("La liste des utilisateurs est en lecture seule avec les routes Xano actuellement fournies.");
-    setLoading(false);
-    return;
-
-    const payload = {
-      phone: phone.trim(),
-      role,
-      is_active: isActive,
-      profile: {
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        city: city.trim(),
-        school_level: role === 'STUDENT' ? schoolLevel : ''
-      },
-      first_name: firstName.trim(),
-      last_name: lastName.trim(),
-      city: city.trim(),
-      school_level: role === 'STUDENT' ? schoolLevel : '',
-      ...(password && !isEdit ? { password } : {})
-    };
 
     try {
       if (isEdit) {
-        await api.patch(`/auth/users/${user.id}/`, payload);
-        setUsers(prev => prev.map(u => u.id === user.id ? { 
-          ...u, 
-          phone: payload.phone, 
-          role: payload.role, 
-          is_active: payload.is_active,
-          profile: payload.profile 
-        } : u));
+        await api.patch(`/auth/users/${user.id}/`, {
+          phone: phone.trim(), role, is_active: isActive,
+          first_name: firstName.trim(), last_name: lastName.trim(),
+        });
         toast.success('Profil mis à jour !');
       } else {
-        const res = await api.post('/auth/users/', payload);
-        const newUser = res.data?.data || res.data || {
-          id: `user-${Date.now()}`,
-          date_joined: new Date().toISOString(),
-          ...payload
-        };
-        setUsers(prev => [newUser, ...prev]);
+        await api.post('/auth/users/', {
+          phone: phone.trim(), password, role,
+          first_name: firstName.trim(), last_name: lastName.trim(),
+        });
         toast.success('Utilisateur créé avec succès !');
       }
-      onRefresh();
+      await onRefresh();
       onClose();
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || err.response?.data?.detail || err.response?.data?.error || err.message || 'Erreur lors de l’enregistrement.';
       toast.error(errorMsg);
-      
-      // Fallback local pour sauvegarde fluide en cas d'erreur réseau persistante
-      if (errorMsg.includes("timeout") || errorMsg.includes("Network") || errorMsg.includes("502")) {
-        console.warn("API Error, using fallback state:", errorMsg);
-        if (isEdit) {
-        setUsers(prev => prev.map(u => u.id === user.id ? { 
-          ...u, 
-          phone: payload.phone, 
-          role: payload.role, 
-          is_active: payload.is_active,
-          profile: payload.profile 
-        } : u));
-        toast.success('Mise à jour enregistrée (Sauvegarde locale)');
-      } else {
-        const tempUser: User = {
-          id: `user-${Date.now()}`,
-          phone: payload.phone,
-          role: payload.role,
-          is_active: payload.is_active,
-          date_joined: new Date().toISOString(),
-          profile: {
-            first_name: payload.profile.first_name,
-            last_name: payload.profile.last_name,
-            city: payload.profile.city,
-            school_level: payload.profile.school_level
-          }
-        };
-        setUsers(prev => [tempUser, ...prev]);
-        toast.success("Utilisateur ajouté à la volée ! (Sauvegarde locale)");
-      }
-      onRefresh();
-      onClose();
-    }
-  } finally {
-    setLoading(false);
-  }
-};
+    } finally { setLoading(false); }
+  };
 
   const handleToggleStatus = async () => {
     if (!user) return;
-    toast.info("La modification d'utilisateur n'est pas encore exposée dans Xano.");
+    setLoading(true);
+    try {
+      const action = isActive ? 'suspend' : 'activate';
+      await api.post(`/admin/users/${user.id}/${action}`);
+      setIsActive(!isActive);
+      await onRefresh();
+      toast.success(isActive ? 'Utilisateur suspendu.' : 'Utilisateur activé.');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Impossible de modifier le statut.');
+    } finally { setLoading(false); }
   };
 
   return (
@@ -207,7 +161,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose, onRefresh,
             <div>
               <label className="text-xs font-bold text-slate-600 mb-1 block">Téléphone *</label>
               <input required value={phone} onChange={e => setPhone(e.target.value)}
-                placeholder="Ex: 627382173" className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-primary" />
+                placeholder="Ex: 620000000" className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-primary" />
             </div>
             <div>
               <label className="text-xs font-bold text-slate-600 mb-1 block">Rôle</label>
@@ -217,16 +171,16 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose, onRefresh,
                 <option value="TUTOR">Tuteur / Répétiteur</option>
                 <option value="PARENT">Parent d'élève</option>
                 <option value="ADMIN">Administrateur</option>
-                <option value="SELLER">Vendeur Boutique</option>
+                <option value="VENDOR">Vendeur Boutique</option>
               </select>
             </div>
           </div>
 
           {!isEdit && (
             <div>
-              <label className="text-xs font-bold text-slate-600 mb-1 block">Mot de passe (Laisser vide pour "Kharandi2026!")</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                placeholder="Kharandi2026!" className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" />
+              <label className="text-xs font-bold text-slate-600 mb-1 block">Mot de passe (8 caractères minimum)</label>
+              <input required minLength={8} type="password" value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="Mot de passe sécurisé" className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" />
             </div>
           )}
 
@@ -554,37 +508,32 @@ const UploadDocumentModal: React.FC<{
     try {
       const fd = new FormData();
       fd.append('title',       form.title);
-      fd.append('doc_type',    form.doc_type);
-      fd.append('level',       form.level);
-      fd.append('is_free',     form.is_free ? '1' : '0');
-      fd.append('price',       String(form.price));
-      fd.append('has_certification', form.has_certification ? '1' : '0');
+      fd.append('document_type', form.doc_type);
+      fd.append('school_level', form.level);
+      fd.append('is_free',     form.is_free ? 'true' : 'false');
       fd.append('description', form.description);
+      fd.append('status', 'PUBLISHED');
       if (form.subject) fd.append('subject_id', form.subject);
-      if (thumb) fd.append('thumbnail', thumb);
+      if (thumb) fd.append('cover_image', thumb);
 
       // Handle mutually exclusive content fields
       if (contentTypeOption === 'content') {
-        fd.append('content', form.content);
-        fd.append('external_url', '');
+        fd.append('description', form.content || form.description);
       } else if (contentTypeOption === 'external') {
-        fd.append('content', '');
-        fd.append('external_url', form.external_url);
+        fd.append('description', `${form.description}\n${form.external_url}`.trim());
       } else {
-        fd.append('content', '');
-        fd.append('external_url', '');
         if (file) fd.append('file', file);
       }
 
       if (isEdit) {
-        await api.patch(`/learning/documents/${document.id}/`, fd, {
+        await api.patch(`/learning/documents/${document.id}`, fd, {
           onUploadProgress: (e) => {
             if (e.total) setProgress(Math.round((e.loaded * 100) / e.total));
           },
         });
         toast.success('Document mis à jour !');
       } else {
-        await api.post('/learning/documents/', fd, {
+        await api.post('/learning/documents', fd, {
           onUploadProgress: (e) => {
             if (e.total) setProgress(Math.round((e.loaded * 100) / e.total));
           },
@@ -797,6 +746,54 @@ const UploadDocumentModal: React.FC<{
   );
 };
 
+const SubjectAdminPanel: React.FC<{ subjects: any[]; onRefresh: () => void }> = ({ subjects, onRefresh }) => {
+  const [editing, setEditing] = useState<any | null>(null);
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => { setEditing(null); setName(''); setCode(''); setDescription(''); };
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault(); setSaving(true);
+    try {
+      const body = { name: name.trim(), code: code.trim().toUpperCase(), description: description.trim(), is_active: true };
+      if (editing) await api.patch(`/learning/subjects/${editing.id}`, body);
+      else await api.post('/learning/subjects', body);
+      toast.success(editing ? 'Matière mise à jour.' : 'Matière créée.'); reset(); await onRefresh();
+    } catch (err: any) { toast.error(err.response?.data?.message || 'Enregistrement impossible.'); }
+    finally { setSaving(false); }
+  };
+  const toggle = async (subject: any) => {
+    try {
+      await api.post(`/learning/subjects/${subject.id}/${subject.is_active === false ? 'activate' : 'deactivate'}`);
+      await onRefresh();
+    } catch (err: any) { toast.error(err.response?.data?.message || 'Action impossible.'); }
+  };
+  const remove = async (subject: any) => {
+    if (!confirm(`Archiver la matière ${subject.name} ?`)) return;
+    try { await api.delete(`/learning/subjects/${subject.id}`); toast.success('Matière archivée.'); await onRefresh(); }
+    catch (err: any) { toast.error(err.response?.data?.message || 'Suppression impossible.'); }
+  };
+
+  return <div className="space-y-6">
+    <div><h2 className="text-2xl font-black text-slate-900">Matières scolaires</h2><p className="text-sm text-slate-400">Créez, modifiez et activez les matières de la bibliothèque.</p></div>
+    <form onSubmit={save} className="bg-white rounded-3xl border border-slate-100 p-5 grid grid-cols-1 md:grid-cols-4 gap-3">
+      <input required value={name} onChange={e => setName(e.target.value)} placeholder="Nom de la matière" className="border rounded-xl px-3 py-2 text-sm" />
+      <input required value={code} onChange={e => setCode(e.target.value)} placeholder="Code (MATH)" className="border rounded-xl px-3 py-2 text-sm uppercase" />
+      <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Description" className="border rounded-xl px-3 py-2 text-sm" />
+      <div className="flex gap-2"><button disabled={saving} className="flex-1 bg-primary text-white rounded-xl font-bold text-sm">{editing ? 'Modifier' : 'Ajouter'}</button>{editing && <button type="button" onClick={reset} className="px-3 bg-slate-100 rounded-xl"><X size={16}/></button>}</div>
+    </form>
+    <div className="bg-white rounded-3xl border border-slate-100 divide-y">
+      {subjects.map(subject => <div key={subject.id} className="p-4 flex items-center justify-between gap-3">
+        <div><p className="font-bold text-slate-800">{subject.name} <span className="text-xs text-primary">{subject.code}</span></p><p className="text-xs text-slate-400">{subject.description}</p></div>
+        <div className="flex gap-2"><button onClick={() => { setEditing(subject); setName(subject.name || ''); setCode(subject.code || ''); setDescription(subject.description || ''); }} className="p-2 text-primary bg-primary/10 rounded-xl"><Edit size={15}/></button><button onClick={() => toggle(subject)} className="px-3 py-2 text-xs font-bold bg-slate-100 rounded-xl">{subject.is_active === false ? 'Activer' : 'Désactiver'}</button><button onClick={() => remove(subject)} className="p-2 text-red-500 bg-red-50 rounded-xl"><Trash2 size={15}/></button></div>
+      </div>)}
+      {!subjects.length && <p className="p-8 text-sm text-slate-400">Aucune matière enregistrée.</p>}
+    </div>
+  </div>;
+};
+
 // ─── DASHBOARD ADMIN PRINCIPAL ──────────────────────────────────────────────
 export const AdminDashboard: React.FC = () => {
   const { userProfile, logout } = useAuth();
@@ -832,6 +829,7 @@ export const AdminDashboard: React.FC = () => {
   const [newSchoolName, setNewSchoolName] = useState('');
   const [newSchoolEmail, setNewSchoolEmail] = useState('');
   const [newSchoolCode, setNewSchoolCode] = useState('');
+  const [newSchoolCity, setNewSchoolCity] = useState('');
   const [isAddingSchool, setIsAddingSchool] = useState(false);
 
   // Actualités state
@@ -851,14 +849,14 @@ export const AdminDashboard: React.FC = () => {
 
   // Palmarès school rankings state
   const [palmaresItems, setPalmaresItems] = useState<any[]>([]);
-  const [palmaresForm, setPalmaresForm] = useState({ rank: '', name: '', location: '', school_type: 'Privé', score: '' });
+  const [palmaresForm, setPalmaresForm] = useState({ school_id: '', exam_type: 'BAC', year: String(new Date().getFullYear()), candidates_count: '', admitted_count: '', rank: '', methodology: '' });
   const [isAddingPalmares, setIsAddingPalmares] = useState(false);
 
   const fetchSchools = async () => {
     setLoadingSchools(true);
     try {
-      const { data } = await api.get('/content/school-rankings/');
-      setSchools(data?.data || []);
+      const response = await api.get('/ecole/schools');
+      setSchools(responseList(response));
     } catch (err) {
       console.error("fetchSchools error:", err);
     } finally {
@@ -868,8 +866,10 @@ export const AdminDashboard: React.FC = () => {
 
   const fetchNewsList = async () => {
     try {
-      const { data } = await api.get('/content/news/');
-      setNewsItems(data?.data || []);
+      const response = await api.get('/content/news/');
+      setNewsItems(responseList(response).map((item: any) => ({
+        ...item, excerpt: item.excerpt || item.summary || item.content,
+      })));
     } catch (err) {
       console.error("fetchNewsList error:", err);
     }
@@ -877,8 +877,15 @@ export const AdminDashboard: React.FC = () => {
 
   const fetchScholarshipList = async () => {
     try {
-      const { data } = await api.get('/content/scholarships/');
-      setScholarshipItems(data?.data || data || []);
+      const response = await api.get('/content/scholarships/');
+      setScholarshipItems(responseList(response).map((item: any) => ({
+        ...item,
+        university: item.university || item.organization,
+        program_name: item.program_name || item.title,
+        excerpt: item.excerpt || item.description,
+        level: item.level || item.school_levels?.join(', '),
+        link: item.link || item.official_url,
+      })));
     } catch (err) {
       console.error("fetchScholarshipList error:", err);
     }
@@ -895,8 +902,8 @@ export const AdminDashboard: React.FC = () => {
 
   const fetchPalmaresList = async () => {
     try {
-      const { data } = await api.get('/content/school-rankings/');
-      setPalmaresItems(data?.data || []);
+      const response = await api.get('/content/school-rankings/');
+      setPalmaresItems(responseList(response));
     } catch (err) {
       console.error("fetchPalmaresList error:", err);
     }
@@ -913,6 +920,7 @@ export const AdminDashboard: React.FC = () => {
       // Le panneau d'import des résultats gère son propre lot Xano.
     } else if (activeTab === 'admin_palmares') {
       fetchPalmaresList();
+      fetchSchools();
     }
   }, [activeTab]);
 
@@ -923,16 +931,20 @@ export const AdminDashboard: React.FC = () => {
 
   const handleCreateSchool = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSchoolName.trim() || !newSchoolEmail.trim() || !newSchoolCode.trim()) {
-      toast.error("Vreuillez renseigner tous les champs.");
+    if (!newSchoolName.trim() || !newSchoolCode.trim() || !newSchoolCity.trim()) {
+      toast.error("Veuillez renseigner le nom, le code et la ville.");
       return;
     }
 
     try {
-      // École créée via Django — endpoint à implémenter si nécessaire
-      toast.info("Fonctionnalité école en cours d'intégration.");
-      setNewSchoolName(''); setNewSchoolEmail(''); setNewSchoolCode('');
+      await api.post('/ecole/schools', {
+        name: newSchoolName.trim(), code: newSchoolCode.trim(), city: newSchoolCity.trim(),
+        ...(newSchoolEmail.trim() ? { email: newSchoolEmail.trim() } : {}),
+      });
+      toast.success("École créée. Elle peut maintenant être approuvée.");
+      setNewSchoolName(''); setNewSchoolEmail(''); setNewSchoolCode(''); setNewSchoolCity('');
       setIsAddingSchool(false);
+      await fetchSchools();
     } catch (err: any) {
       toast.error("Erreur de création.");
     }
@@ -940,7 +952,9 @@ export const AdminDashboard: React.FC = () => {
 
   const handleToggleSchoolSubscription = async (schoolId: string, currentStatus: string) => {
     try {
-      toast.info("Mise à jour statut école — fonctionnalité en cours d'intégration.");
+      const isApproved = ['APPROVED', 'ACTIVE', 'active'].includes(currentStatus);
+      await api.post(`/ecole/schools/${schoolId}/${isApproved ? 'suspend' : 'approve'}`);
+      toast.success(isApproved ? 'École suspendue.' : 'École approuvée.');
       await fetchSchools();
     } catch (err) {
       toast.error("Erreur de mise à jour.");
@@ -948,9 +962,10 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const handleDeleteSchool = async (schoolId: string) => {
-    if (!confirm("Voulez-vous supprimer définitivement cet établissement scolaire de la plate-forme ?")) return;
+    if (!confirm("Voulez-vous archiver cet établissement scolaire ?")) return;
     try {
-      toast.info("Suppression école — fonctionnalité en cours d'intégration.");
+      await api.delete(`/ecole/schools/${schoolId}`);
+      toast.success('École archivée.');
       await fetchSchools();
     } catch (err) {
       toast.error("Erreur de suppression.");
@@ -964,7 +979,10 @@ export const AdminDashboard: React.FC = () => {
       return;
     }
     try {
-      await api.post('/content/news/', newsForm);
+      await api.post('/content/news', {
+        title: newsForm.title.trim(), summary: newsForm.excerpt.trim(), content: newsForm.excerpt.trim(),
+        category: newsForm.category, status: 'PUBLISHED', is_featured: false,
+      });
       toast.success("Actualité créée !");
       setNewsForm({ title: '', excerpt: '', category: 'Infos', color: 'bg-blue-100 text-blue-600' });
       setIsAddingNews(false);
@@ -976,7 +994,7 @@ export const AdminDashboard: React.FC = () => {
 
   const handleDeleteNews = async (id: string) => {
     if (!confirm("Supprimer cette actualité ?")) return;
-    try { await api.delete(`/content/news/${id}/`); toast.success("Actualité supprimée."); await fetchNewsList(); }
+    try { await api.delete(`/content/news/${id}`); toast.success("Actualité supprimée."); await fetchNewsList(); }
     catch (err) { toast.error("Erreur de suppression."); }
   };
 
@@ -987,7 +1005,15 @@ export const AdminDashboard: React.FC = () => {
       return;
     }
     try {
-      await api.post('/content/scholarships/', scholarshipForm);
+      await api.post('/content/scholarships', {
+        title: scholarshipForm.program_name.trim(),
+        organization: scholarshipForm.university.trim(),
+        description: scholarshipForm.excerpt.trim(),
+        country: scholarshipForm.country.trim(),
+        school_levels: [scholarshipForm.level],
+        official_url: scholarshipForm.link.trim() || undefined,
+        status: 'PUBLISHED',
+      });
       toast.success("Bourse d'étude ajoutée !");
       setScholarshipForm({ university: '', program_name: '', excerpt: '', country: '', city: '', level: 'Licence', link: '' });
       setIsAddingScholarship(false);
@@ -999,7 +1025,7 @@ export const AdminDashboard: React.FC = () => {
 
   const handleDeleteScholarship = async (id: string) => {
     if (!confirm("Supprimer cette bourse ?")) return;
-    try { await api.delete(`/content/scholarships/${id}/`); toast.success("Bourse supprimée."); await fetchScholarshipList(); }
+    try { await api.delete(`/content/scholarships/${id}`); toast.success("Bourse supprimée."); await fetchScholarshipList(); }
     catch { toast.error("Erreur de suppression."); }
   };
 
@@ -1032,17 +1058,23 @@ export const AdminDashboard: React.FC = () => {
 
   const handleCreatePalmares = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!palmaresForm.name.trim() || !palmaresForm.rank.trim()) {
-      toast.error("Veuillez remplir le nom et le rang.");
+    if (!palmaresForm.school_id || !palmaresForm.year || !palmaresForm.candidates_count || !palmaresForm.admitted_count) {
+      toast.error("Veuillez sélectionner l’école et renseigner l’année et les effectifs.");
       return;
     }
     try {
-      await api.post('/content/school-rankings/', {
-        ...palmaresForm,
-        rank: Number(palmaresForm.rank)
+      await api.post('/content/school-rankings', {
+        school_id: Number(palmaresForm.school_id),
+        exam_type: palmaresForm.exam_type,
+        year: Number(palmaresForm.year),
+        candidates_count: Number(palmaresForm.candidates_count),
+        admitted_count: Number(palmaresForm.admitted_count),
+        rank: palmaresForm.rank ? Number(palmaresForm.rank) : undefined,
+        methodology: palmaresForm.methodology || undefined,
+        status: 'PUBLISHED',
       });
       toast.success("Établissement ajouté au palmarès (classement) !");
-      setPalmaresForm({ rank: '', name: '', location: '', school_type: 'Privé', score: '' });
+      setPalmaresForm({ school_id: '', exam_type: 'BAC', year: String(new Date().getFullYear()), candidates_count: '', admitted_count: '', rank: '', methodology: '' });
       setIsAddingPalmares(false);
       await fetchPalmaresList();
     } catch (err: any) {
@@ -1053,7 +1085,7 @@ export const AdminDashboard: React.FC = () => {
   const handleDeletePalmares = async (id: string) => {
     if (!confirm("Retirer cet établissement du palmarès ?")) return;
     try {
-      await api.delete(`/content/school-rankings/${id}/`);
+      await api.delete(`/content/school-rankings/${id}`);
       toast.success("Établissement supprimé du classement.");
       await fetchPalmaresList();
     } catch (err) {
@@ -1062,8 +1094,12 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const handleDeleteUser = async (userToDelete: User) => {
-    void userToDelete;
-    toast.info("La suppression d'utilisateur n'est pas encore exposée dans Xano.");
+    if (!confirm(`Archiver le compte ${userToDelete.phone} ?`)) return;
+    try {
+      await api.delete(`/auth/users/${userToDelete.id}/`);
+      toast.success('Utilisateur archivé.');
+      await fetchAll();
+    } catch (err: any) { toast.error(err.response?.data?.message || 'Suppression impossible.'); }
   };
 
   const handleDeletePlan = async (id: string) => {
@@ -1090,10 +1126,20 @@ export const AdminDashboard: React.FC = () => {
         api.get('/learning/subjects/'),
       ]);
       if (summaryRes.status      === 'fulfilled') setDashboardSummary(summaryRes.value.data?.data || summaryRes.value.data || {});
-      if (usersRes.status        === 'fulfilled') setUsers(usersRes.value.data?.data || []);
-      if (docsRes.status         === 'fulfilled') setDocuments(docsRes.value.data?.results || docsRes.value.data?.data || []);
-      if (plansRes.status        === 'fulfilled') setPlans(plansRes.value.data?.data || []);
-      if (subjectsRes.status     === 'fulfilled') setSubjects(subjectsRes.value.data?.results || subjectsRes.value.data?.data || []);
+      if (usersRes.status === 'fulfilled') setUsers(responseList(usersRes.value).map((item: any) => ({
+        ...item,
+        phone: item.phone || item.phone_e164 || '',
+        date_joined: item.date_joined || item.created_at || new Date().toISOString(),
+        profile: item.profile || { first_name: item.first_name || '', last_name: item.last_name || '' },
+      })));
+      if (docsRes.status === 'fulfilled') setDocuments(responseList(docsRes.value).map((item: any) => ({
+        ...item,
+        doc_type: item.doc_type || item.document_type,
+        level: item.level || item.school_level,
+        downloads: item.downloads || item.download_count || 0,
+      })));
+      if (plansRes.status        === 'fulfilled') setPlans(responseList(plansRes.value));
+      if (subjectsRes.status     === 'fulfilled') setSubjects(responseList(subjectsRes.value));
     } catch { toast.error('Erreur de chargement.'); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -1130,8 +1176,12 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const handleDeleteDocument = async (id: string) => {
-    void id;
-    toast.info("La suppression de document n'est pas encore exposée dans Xano.");
+    if (!confirm('Archiver ce document ?')) return;
+    try {
+      await api.delete(`/learning/documents/${id}`);
+      toast.success('Document archivé.');
+      await fetchAll();
+    } catch (err: any) { toast.error(err.response?.data?.message || 'Suppression impossible.'); }
   };
 
   const filteredUsers = users.filter(u => {
@@ -1150,6 +1200,7 @@ export const AdminDashboard: React.FC = () => {
     { id: 'users',      icon: Users,            label: 'Utilisateurs',   badge: users.length },
     { id: 'ecole_manager', icon: School,        label: 'Kharandi École', badge: schools.length || undefined },
     { id: 'documents',  icon: BookOpen,         label: 'Documents',      badge: documents.length },
+    { id: 'subjects',   icon: BookOpen,         label: 'Matières',       badge: subjects.length },
     { id: 'payments',   icon: CreditCard,       label: 'Paiements',      badge: transactions.filter(t=>t.status==='PENDING').length || undefined },
     { id: 'tickets',    icon: MessageSquare,    label: 'Support',        badge: stats.open_tickets || undefined },
     { id: 'broadcast',  icon: Bell,             label: 'Notifications' },
@@ -1606,6 +1657,8 @@ export const AdminDashboard: React.FC = () => {
             </div>
           )}
 
+          {activeTab === 'subjects' && <SubjectAdminPanel subjects={subjects} onRefresh={fetchAll} />}
+
           {/* ── PAIEMENTS ───────────────────────────────────────────────── */}
           {activeTab === 'payments' && (
             <div className="space-y-6">
@@ -1881,15 +1934,15 @@ export const AdminDashboard: React.FC = () => {
                   <p className="text-xs text-slate-400 font-bold mt-1">Écoles Partenaires</p>
                 </div>
                 <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                  <p className="text-2xl font-black text-green-600">{schools.filter(s => s.isActivated).length}</p>
+                  <p className="text-2xl font-black text-green-600">{schools.filter(s => ['APPROVED','ACTIVE','active'].includes(s.status)).length}</p>
                   <p className="text-xs text-slate-400 font-bold mt-1">Espaces Activés</p>
                 </div>
                 <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                  <p className="text-2xl font-black text-amber-500">{schools.filter(s => !s.isActivated).length}</p>
+                  <p className="text-2xl font-black text-amber-500">{schools.filter(s => !['APPROVED','ACTIVE','active'].includes(s.status)).length}</p>
                   <p className="text-xs text-slate-400 font-bold mt-1">En attente d'activation</p>
                 </div>
                 <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                  <p className="text-2xl font-black text-primary">{schools.filter(s => s.status === 'active').length}</p>
+                  <p className="text-2xl font-black text-primary">{schools.filter(s => ['APPROVED','ACTIVE','active'].includes(s.status)).length}</p>
                   <p className="text-xs text-slate-400 font-bold mt-1">Abonnements Actifs</p>
                 </div>
               </div>
@@ -1899,7 +1952,7 @@ export const AdminDashboard: React.FC = () => {
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                   <h3 className="font-black text-slate-900 mb-4">Créer un Portail d'Établissement</h3>
                   <form onSubmit={handleCreateSchool} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-bold text-slate-650 block mb-1">Nom de l'école / Établissement</label>
                         <input 
@@ -1910,6 +1963,12 @@ export const AdminDashboard: React.FC = () => {
                           placeholder="Ex: Complexe Scolaire Saint-Joseph" 
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800"
                         />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-650 block mb-1">Ville / Région</label>
+                        <input type="text" required value={newSchoolCity} onChange={(e) => setNewSchoolCity(e.target.value)}
+                          placeholder="Ex: Conakry"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800" />
                       </div>
                       <div>
                         <label className="text-xs font-bold text-slate-650 block mb-1">Email officiel de contact</label>
@@ -1960,7 +2019,7 @@ export const AdminDashboard: React.FC = () => {
                     </div>
 
                     <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 text-xs font-medium text-amber-800 leading-relaxed">
-                      <strong>Note de Sécurité :</strong> Le mot de passe par défaut est <span className="font-mono bg-white px-1.5 py-0.5 rounded border font-bold text-red-600">kharandi2026</span>. Lorsque la direction entrera son Email et son Clé d'activation sur le portail d'école, le système l'obligera à le remplacer par un mot de passe robuste de son choix. En tant qu'administrateur suprême, vous ne possédez pas d'accès direct à ses futures données scolaires confidentielles.
+                      L’établissement est créé dans Xano avec le statut en attente. Utilisez ensuite le bouton « Activer » pour l’approuver.
                     </div>
                   </form>
                 </motion.div>
@@ -2006,10 +2065,10 @@ export const AdminDashboard: React.FC = () => {
                             <td className="py-4 font-extrabold text-slate-800">{sc.name}</td>
                             <td className="py-4 text-xs font-medium text-slate-500">{sc.email}</td>
                             <td className="py-4 text-xs text-slate-400">
-                              {sc.createdAt ? new Date(sc.createdAt).toLocaleDateString() : 'N/A'}
+                              {sc.created_at ? new Date(sc.created_at).toLocaleDateString() : 'N/A'}
                             </td>
                             <td className="py-4">
-                              {sc.isActivated ? (
+                              {['APPROVED','ACTIVE','active'].includes(sc.status) ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-50 text-green-700 text-xs font-bold border border-green-200 rounded-full">
                                   ✓ Lié / Activé
                                 </span>
@@ -2021,11 +2080,11 @@ export const AdminDashboard: React.FC = () => {
                             </td>
                             <td className="py-4">
                               <span className={`px-2.5 py-1 text-xs font-bold border rounded-full ${
-                                sc.status === 'active' 
+                                ['APPROVED','ACTIVE','active'].includes(sc.status)
                                   ? 'bg-green-50 border-green-200 text-green-700' 
                                   : 'bg-red-50 border-red-205 text-red-700'
                               }`}>
-                                {sc.status === 'active' ? 'Actif' : 'Suspendu'}
+                                {['APPROVED','ACTIVE','active'].includes(sc.status) ? 'Actif' : sc.status || 'En attente'}
                               </span>
                             </td>
                             <td className="py-4 pr-6 text-right">
@@ -2033,12 +2092,12 @@ export const AdminDashboard: React.FC = () => {
                                 <button 
                                   onClick={() => handleToggleSchoolSubscription(sc.id, sc.status)}
                                   className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all border ${
-                                    sc.status === 'active' 
+                                    ['APPROVED','ACTIVE','active'].includes(sc.status)
                                       ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-100' 
                                       : 'bg-green-50 hover:bg-green-100 text-green-600 border-green-100'
                                   }`}
                                 >
-                                  {sc.status === 'active' ? 'Suspendre' : 'Activer'}
+                                  {['APPROVED','ACTIVE','active'].includes(sc.status) ? 'Suspendre' : 'Activer'}
                                 </button>
                                 <button 
                                   onClick={() => handleDeleteSchool(sc.id)}
@@ -2498,66 +2557,43 @@ export const AdminDashboard: React.FC = () => {
                   <form onSubmit={handleCreatePalmares} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div>
-                        <label className="text-xs font-bold text-slate-650 block mb-1">Rang (Position)</label>
-                        <input 
-                          type="number" 
-                          required
-                          value={palmaresForm.rank}
-                          onChange={(e) => setPalmaresForm({...palmaresForm, rank: e.target.value})}
-                          placeholder="Ex: 1" 
-                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-bold text-slate-650 block mb-1">Nom de l'école</label>
-                        <input 
-                          type="text" 
-                          required
-                          value={palmaresForm.name}
-                          onChange={(e) => setPalmaresForm({...palmaresForm, name: e.target.value})}
-                          placeholder="Ex: Lycée d'Excellence de Conakry" 
-                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-bold text-slate-650 block mb-1">Ville / Région</label>
-                        <input 
-                          type="text" 
-                          required
-                          value={palmaresForm.location}
-                          onChange={(e) => setPalmaresForm({...palmaresForm, location: e.target.value})}
-                          placeholder="Ex: Conakry" 
-                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs font-bold text-slate-650 block mb-1">Type d'établissement</label>
-                        <select 
-                          value={palmaresForm.school_type}
-                          onChange={(e) => setPalmaresForm({...palmaresForm, school_type: e.target.value})}
-                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none"
-                        >
-                          <option value="Public">Public</option>
-                          <option value="Privé">Privé</option>
+                        <label className="text-xs font-bold text-slate-650 block mb-1">Établissement *</label>
+                        <select required value={palmaresForm.school_id} onChange={(e) => setPalmaresForm({...palmaresForm, school_id: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm">
+                          <option value="">Sélectionner une école</option>
+                          {schools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs font-bold text-slate-650 block mb-1">Score Général / Performance (sur 100)</label>
-                        <input 
-                          type="number" 
-                          required
-                          max={100}
-                          min={0}
-                          value={palmaresForm.score}
-                          onChange={(e) => setPalmaresForm({...palmaresForm, score: e.target.value})}
-                          placeholder="Ex: 95" 
-                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm"
-                        />
+                        <label className="text-xs font-bold text-slate-650 block mb-1">Examen *</label>
+                        <select value={palmaresForm.exam_type} onChange={(e) => setPalmaresForm({...palmaresForm, exam_type: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm">
+                          <option value="BAC">BAC</option><option value="BEPC">BEPC</option><option value="CEE">CEE</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-650 block mb-1">Année *</label>
+                        <input type="number" required value={palmaresForm.year} onChange={(e) => setPalmaresForm({...palmaresForm, year: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-650 block mb-1">Candidats *</label>
+                        <input type="number" min="1" required value={palmaresForm.candidates_count} onChange={(e) => setPalmaresForm({...palmaresForm, candidates_count: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-650 block mb-1">Admis *</label>
+                        <input type="number" min="0" required value={palmaresForm.admitted_count} onChange={(e) => setPalmaresForm({...palmaresForm, admitted_count: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-650 block mb-1">Rang</label>
+                        <input type="number" min="1" value={palmaresForm.rank} onChange={(e) => setPalmaresForm({...palmaresForm, rank: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm" />
                       </div>
                     </div>
+                    <textarea value={palmaresForm.methodology} onChange={(e) => setPalmaresForm({...palmaresForm, methodology: e.target.value})}
+                      placeholder="Méthodologie du classement (optionnel)" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm" />
 
                     <div className="flex gap-2 justify-end">
                       <button 
@@ -2589,9 +2625,9 @@ export const AdminDashboard: React.FC = () => {
                         <tr className="bg-slate-50/50 border-b border-slate-100 text-xs font-bold text-slate-400 uppercase">
                           <th className="py-4 pl-6 w-16 text-center">Rang</th>
                           <th className="py-4">Nom de l'établissement</th>
-                          <th className="py-4">Type</th>
-                          <th className="py-4">Ville</th>
-                          <th className="py-4">Score</th>
+                          <th className="py-4">Examen</th>
+                          <th className="py-4">Année</th>
+                          <th className="py-4">Réussite</th>
                           <th className="py-4 pr-6 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -2599,10 +2635,10 @@ export const AdminDashboard: React.FC = () => {
                         {palmaresItems.map((item) => (
                           <tr key={item.id} className="hover:bg-slate-50/50 text-sm">
                             <td className="py-4 pl-6 text-center font-black text-primary">#{item.rank}</td>
-                            <td className="py-4 font-bold text-slate-800">{item.name}</td>
-                            <td className="py-4 text-xs font-medium text-slate-500">{item.school_type}</td>
-                            <td className="py-4 text-slate-600">{item.location}</td>
-                            <td className="py-4 font-black text-green-600">{item.score}/100</td>
+                            <td className="py-4 font-bold text-slate-800">{item.school?.name || item.school_name || `École #${item.school_id}`}</td>
+                            <td className="py-4 text-xs font-medium text-slate-500">{item.exam_type}</td>
+                            <td className="py-4 text-slate-600">{item.year}</td>
+                            <td className="py-4 font-black text-green-600">{item.success_rate ?? (item.candidates_count ? Math.round(item.admitted_count * 100 / item.candidates_count) : 0)}%</td>
                             <td className="py-4 pr-6 text-right">
                               <button 
                                 onClick={() => handleDeletePalmares(item.id)}

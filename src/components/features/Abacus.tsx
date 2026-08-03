@@ -2,7 +2,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Award, Brain, CheckCircle2, ChevronRight, Flame, Loader2, Lock, RotateCcw, Sparkles, Star, Target, XCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
-import { answerAbacusSession, finishAbacusSession, getAbacusLevels, startAbacusSession, AbacusLevel } from '../../services/abacus';
+import {
+  answerAbacusSession, finishAbacusSession, getAbacusLevels, getAbacusSkills,
+  startAbacusSession, AbacusLevel, AbacusMode, AbacusSkill,
+} from '../../services/abacus';
+
+const ABACUS_MODES: Array<{ value: AbacusMode; label: string }> = [
+  { value: 'GUIDED', label: 'Guidé' },
+  { value: 'PRACTICE', label: 'Entraînement' },
+  { value: 'TIMED', label: 'Chronométré' },
+  { value: 'FLASH_ANZAN', label: 'Flash Anzan' },
+];
 
 const AbacusVisual: React.FC<{ value?: number }> = ({ value = 0 }) => {
   const digits = String(Math.abs(Math.trunc(value))).padStart(4, '0').slice(-4).split('').map(Number);
@@ -29,6 +39,10 @@ export const Abacus: React.FC = () => {
   const [status, setStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
+  const [selectedLevel, setSelectedLevel] = useState<AbacusLevel | null>(null);
+  const [skills, setSkills] = useState<AbacusSkill[]>([]);
+  const [mode, setMode] = useState<AbacusMode>('PRACTICE');
+  const [questionStartedAt, setQuestionStartedAt] = useState(() => Date.now());
   const [answer, setAnswer] = useState('');
   const [feedback, setFeedback] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
@@ -55,12 +69,23 @@ export const Abacus: React.FC = () => {
   const currentQuestion = session?.current_question || session?.question;
   const visualValue = useMemo(() => Number(currentQuestion?.visual_value ?? currentQuestion?.left ?? 0), [currentQuestion]);
 
-  const start = async (level: AbacusLevel) => {
+  const openLevel = async (level: AbacusLevel) => {
     if (level.unlocked === false) return;
     setSubmitting(true); setSummary(null); setFeedback(null);
     try {
-      const data = await startAbacusSession({ level_id: level.id, mode: 'training' });
-      setSession(data); setAnswer('');
+      const levelSkills = await getAbacusSkills(level.id);
+      setSelectedLevel(level);
+      setSkills(levelSkills);
+    } catch { toast.error('Impossible de charger les compétences de ce niveau.'); }
+    finally { setSubmitting(false); }
+  };
+
+  const start = async (skill: AbacusSkill) => {
+    if (skill.unlocked === false) return;
+    setSubmitting(true); setSummary(null); setFeedback(null);
+    try {
+      const data = await startAbacusSession({ skill_id: skill.id, mode });
+      setSession(data); setAnswer(''); setQuestionStartedAt(Date.now());
     } catch { toast.error('Impossible de démarrer cette séance.'); }
     finally { setSubmitting(false); }
   };
@@ -68,18 +93,27 @@ export const Abacus: React.FC = () => {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!session?.id || answer.trim() === '') return;
+    const questionId = currentQuestion?.id ?? currentQuestion?.question_id;
+    if (questionId === undefined || questionId === null) {
+      toast.error("La question Xano ne contient pas d'identifiant."); return;
+    }
     setSubmitting(true);
     try {
-      const result = await answerAbacusSession(session.id, Number(answer));
+      const result = await answerAbacusSession(session.id, {
+        question_id: questionId,
+        answer: answer.trim(),
+        response_time_ms: Math.max(0, Date.now() - questionStartedAt),
+      });
       setFeedback(result);
-      if (result.finished || !result.next_question) {
+      const nextQuestion = result.next_question || session.questions?.[Number(session.current_index || 1)];
+      if (result.finished || !nextQuestion) {
         const finalData = await finishAbacusSession(session.id);
         setSummary(finalData); setSession(null);
         await load();
       } else {
         setTimeout(() => {
-          setSession((prev: any) => ({ ...prev, ...result, current_question: result.next_question }));
-          setFeedback(null); setAnswer('');
+          setSession((prev: any) => ({ ...prev, ...result, current_question: nextQuestion, current_index: Number(prev.current_index || 1) + 1 }));
+          setFeedback(null); setAnswer(''); setQuestionStartedAt(Date.now());
         }, 850);
       }
     } catch { toast.error('Réponse non enregistrée. Réessayez.'); }
@@ -87,6 +121,38 @@ export const Abacus: React.FC = () => {
   };
 
   if (loading && !session) return <div className="min-h-[55vh] grid place-items-center"><Loader2 className="animate-spin text-primary" size={34} /></div>;
+
+  if (selectedLevel && !session) return (
+    <div className="max-w-4xl mx-auto p-4 md:p-8 pb-24 space-y-6">
+      <button onClick={() => { setSelectedLevel(null); setSkills([]); }} className="text-sm font-black text-primary">← Retour aux niveaux</button>
+      <div className="rounded-[30px] bg-white border border-slate-100 shadow-sm p-6">
+        <p className="text-xs font-black uppercase tracking-widest text-primary">{selectedLevel.code}</p>
+        <h1 className="mt-1 text-3xl font-black text-slate-900">{selectedLevel.name}</h1>
+        <label className="mt-5 block text-xs font-black uppercase tracking-wider text-slate-500">Mode de séance</label>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {ABACUS_MODES.map(item => (
+            <button key={item.value} type="button" onClick={() => setMode(item.value)}
+              className={`rounded-xl border px-3 py-2 text-xs font-black ${mode === item.value ? 'border-primary bg-primary text-white' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {!skills.length ? (
+        <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-10 text-center text-slate-500 font-bold">Aucune compétence publiée pour ce niveau.</div>
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-4">
+          {skills.map(skill => (
+            <button key={skill.id} onClick={() => start(skill)} disabled={skill.unlocked === false || submitting}
+              className="rounded-[24px] border border-slate-100 bg-white p-5 text-left shadow-sm hover:border-primary hover:shadow-lg disabled:opacity-50">
+              <div className="flex items-center justify-between"><h2 className="font-black text-slate-900">{skill.name}</h2><ChevronRight className="text-primary" /></div>
+              <p className="mt-2 text-sm text-slate-400">{skill.description || 'Compétence de calcul mental Kharandi.'}</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   if (session && currentQuestion) return (
     <div className="max-w-3xl mx-auto p-4 md:p-8 pb-24">
@@ -137,7 +203,7 @@ export const Abacus: React.FC = () => {
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {levels.sort((a,b) => Number(a.order || 0) - Number(b.order || 0)).map(level => (
-              <button key={level.id} onClick={() => start(level)} disabled={level.unlocked === false || submitting}
+              <button key={level.id} onClick={() => openLevel(level)} disabled={level.unlocked === false || submitting}
                 className="text-left rounded-[26px] border border-slate-100 bg-white p-5 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:hover:translate-y-0">
                 <div className="flex items-center justify-between"><span className="rounded-xl bg-primary/10 px-3 py-1 font-black text-primary">{level.code}</span>{level.unlocked === false ? <Lock className="text-slate-300" size={18} /> : <ChevronRight className="text-primary" />}</div>
                 <h3 className="mt-4 font-black text-slate-900">{level.name}</h3><p className="mt-1 text-sm text-slate-400 line-clamp-2">{level.description || 'Entraînement progressif au boulier et au calcul mental.'}</p>

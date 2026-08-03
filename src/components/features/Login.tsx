@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui/Button';
-import { Phone, Lock, Eye, EyeOff, AlertCircle, Loader2, Backpack, Pencil, PenTool, Ruler, GraduationCap, BookOpen, CheckCircle2, ArrowLeft, MessageCircle, Mail, ExternalLink } from 'lucide-react';
+import { Phone, Lock, Eye, EyeOff, AlertCircle, Loader2, Backpack, Pencil, PenTool, Ruler, GraduationCap, BookOpen, CheckCircle2, ArrowLeft, MessageCircle, Mail, ExternalLink, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -19,7 +19,11 @@ export const Login: React.FC = () => {
   const [otpCode,     setOtpCode]     = useState('');
   const [password,    setPassword]    = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [firstName,   setFirstName]   = useState('');
+  const [lastName,    setLastName]    = useState('');
   const [role,        setRole]        = useState<RegistrationRole | ''>('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [showPwd,     setShowPwd]     = useState(false);
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState<string|null>(null);
@@ -47,35 +51,33 @@ export const Login: React.FC = () => {
 
   const _go = () => { window.location.href = '/'; };
 
-  const sendOTP = async (p: string, purpose: 'LOGIN' | 'REGISTER') => {
-    await api.post('/auth/otp/send/', { phone: p, purpose });
-  };
-
   // ── Étape 1 : numéro ──────────────────────────────────────────────────────
   const handlePhone = async () => {
     const p = fmt();
     setLoading(true); setError(null);
     try {
+      const { data } = await api.post('/auth/login/', { phone: p });
+      const payload = data?.data || data || {};
       if (mode === 'login') {
-        // Essayer connexion par device_token d'abord
-        const { data } = await api.post('/auth/login/', { phone: p });
-        if (data?.data?.tokens) { _save(data); _go(); return; }
-        if (data?.data?.otp_sent) {
-          // Ancien compte sans mot de passe → OTP
-          setStep('otp'); toast.info(`Code envoyé au ${p}`); return;
+        if (payload?.tokens?.access || payload?.authToken || payload?.access || payload?.access_token || payload?.token) { _save(data); _go(); return; }
+        if (String(payload?.action || '').toUpperCase() === 'REGISTER') {
+          setError("Aucun compte avec ce numéro. Créez d'abord votre compte.");
+          setMode('register');
+          return;
         }
-        // A un compte → demander mot de passe
-        setStep('password');
+        setStep('otp'); toast.info(`Code envoyé au ${p}`);
       } else {
-        // Xano vérifie lui-même que le numéro n'est pas déjà inscrit.
-        await sendOTP(p, 'REGISTER');
+        if (String(payload?.action || '').toUpperCase() === 'LOGIN') {
+          setError("Ce numéro est déjà inscrit. Connectez-vous à la place.");
+          setMode('login');
+          return;
+        }
         setStep('otp'); toast.info(`Code envoyé au ${p}`);
       }
     } catch (err: any) {
       const code = err.response?.data?.errors?.code || err.response?.data?.code;
       if (code === 'device_blocked') {
         localStorage.removeItem('kharandi_device_token');
-        await sendOTP(p, 'LOGIN');
         setStep('otp'); toast.info("Vérification requise");
         setError(null); return;
       }
@@ -107,7 +109,7 @@ export const Login: React.FC = () => {
     const p = fmt();
     try {
       if (mode === 'login') {
-        const { data } = await api.post('/auth/login/verify/', { phone: p, code: otpCode, purpose: 'LOGIN' });
+        const { data } = await api.post('/auth/login/verify/', { phone: p, code: otpCode });
         _save(data); toast.success('Connexion réussie !'); _go();
       } else {
         // Inscription → aller vers création mot de passe
@@ -120,8 +122,17 @@ export const Login: React.FC = () => {
 
   // ── Inscription : créer le mot de passe ───────────────────────────────────
   const handleNewPassword = async () => {
+    if (firstName.trim().length < 2) {
+      setError("Saisissez votre prénom."); return;
+    }
+    if (lastName.trim().length < 2) {
+      setError("Saisissez votre nom."); return;
+    }
     if (!role) {
       setError("Choisissez votre profil pour continuer."); return;
+    }
+    if (!termsAccepted || !privacyAccepted) {
+      setError("Acceptez les conditions d’utilisation et la politique de confidentialité."); return;
     }
     if (newPassword.length < 8) {
       setError("Minimum 8 caractères."); return;
@@ -129,9 +140,21 @@ export const Login: React.FC = () => {
     setLoading(true); setError(null);
     try {
       const { data } = await api.post('/auth/register/', {
-        phone: fmt(), code: otpCode, password: newPassword, role,
+        phone: fmt(), code: otpCode, password: newPassword,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        role,
       });
       _save(data);
+      const onboardingRole = role === 'STUDENT' ? 'student'
+        : role === 'PARENT' ? 'parent'
+        : role === 'TUTOR' ? 'repetiteur'
+        : 'seller';
+      sessionStorage.setItem('just_registered', 'true');
+      sessionStorage.setItem('onboarding_step', '1');
+      sessionStorage.setItem('onboarding_role', onboardingRole);
+      sessionStorage.setItem('onboarding_first_name', firstName.trim());
+      sessionStorage.setItem('onboarding_last_name', lastName.trim());
       toast.success('Compte créé ! Bienvenue sur Kharandi 🎉');
       _go();
     } catch (err: any) {
@@ -177,7 +200,9 @@ export const Login: React.FC = () => {
 
   const reset = (m: Mode) => {
     setMode(m); setStep('phone'); setError(null);
-    setOtpCode(''); setPassword(''); setNewPassword(''); setRole('');
+    setOtpCode(''); setPassword(''); setNewPassword('');
+    setFirstName(''); setLastName(''); setRole('');
+    setTermsAccepted(false); setPrivacyAccepted(false);
   };
 
   const FloatingIcon = ({ icon: Icon, color, delay, top, left, rotate }: any) => (
@@ -476,6 +501,12 @@ export const Login: React.FC = () => {
                 >
                   ← Modifier le numéro de téléphone
                 </button>
+                {step === 'otp' && mode === 'login' && (
+                  <button type="button" onClick={() => { setStep('password'); setOtpCode(''); }}
+                    className="block mx-auto mt-2 text-[11px] font-bold text-[#18bfd6] hover:underline">
+                    Utiliser mon mot de passe
+                  </button>
+                )}
               </motion.div>
             )}
 
@@ -483,33 +514,66 @@ export const Login: React.FC = () => {
             {(step === 'new_password' || step === 'reset_new') && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
                 {step === 'new_password' && (
-                  <fieldset className="space-y-2 text-left">
-                    <legend className="text-xs font-black text-slate-700">
-                      Je crée un compte comme <span className="text-red-500">*</span>
-                    </legend>
-                    <div className="grid grid-cols-2 gap-2">
-                      {([
-                        ['STUDENT', 'Élève'],
-                        ['PARENT', 'Parent'],
-                        ['TUTOR', 'Répétiteur'],
-                        ['VENDOR', 'Vendeur'],
-                      ] as const).map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          aria-pressed={role === value}
-                          onClick={() => { setRole(value); setError(null); }}
-                          className={`rounded-2xl border px-3 py-3 text-xs font-black transition-all cursor-pointer ${
-                            role === value
-                              ? 'border-[#18bfd6] bg-[#18bfd6]/10 text-[#0e91a3] ring-2 ring-[#18bfd6]/10'
-                              : 'border-slate-200 bg-white text-slate-500 hover:border-[#18bfd6]/50'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="relative">
+                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input
+                          type="text"
+                          required
+                          autoFocus
+                          minLength={2}
+                          maxLength={80}
+                          autoComplete="given-name"
+                          placeholder="Prénom"
+                          value={firstName}
+                          onChange={e => { setFirstName(e.target.value); setError(null); }}
+                          className="w-full p-4 pl-12 rounded-[20px] bg-white border border-slate-200 text-slate-900 placeholder-slate-400 focus:border-[#18bfd6] focus:ring-4 focus:ring-[#18bfd6]/10 outline-none transition-all shadow-xs block text-sm font-medium"
+                        />
+                      </div>
+                      <div className="relative">
+                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input
+                          type="text"
+                          required
+                          minLength={2}
+                          maxLength={80}
+                          autoComplete="family-name"
+                          placeholder="Nom"
+                          value={lastName}
+                          onChange={e => { setLastName(e.target.value); setError(null); }}
+                          className="w-full p-4 pl-12 rounded-[20px] bg-white border border-slate-200 text-slate-900 placeholder-slate-400 focus:border-[#18bfd6] focus:ring-4 focus:ring-[#18bfd6]/10 outline-none transition-all shadow-xs block text-sm font-medium"
+                        />
+                      </div>
                     </div>
-                  </fieldset>
+                    <fieldset className="space-y-2 text-left">
+                      <legend className="text-xs font-black text-slate-700">
+                        Je crée un compte comme <span className="text-red-500">*</span>
+                      </legend>
+                      <div className="grid grid-cols-2 gap-2">
+                        {([
+                          ['STUDENT', 'Élève'],
+                          ['PARENT', 'Parent'],
+                          ['TUTOR', 'Répétiteur'],
+                          ['VENDOR', 'Vendeur'],
+                        ] as const).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={role === value}
+                            onClick={() => { setRole(value); setError(null); }}
+                            className={`rounded-2xl border px-3 py-3 text-xs font-black transition-all cursor-pointer ${
+                              role === value
+                                ? 'border-[#18bfd6] bg-[#18bfd6]/10 text-[#0e91a3] ring-2 ring-[#18bfd6]/10'
+                                : 'border-slate-200 bg-white text-slate-500 hover:border-[#18bfd6]/50'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
+                  </div>
                 )}
                 <div className="bg-[#18bfd6]/5 border border-[#18bfd6]/10 rounded-2xl p-4 text-left">
                   <p className="text-xs text-slate-600 font-medium leading-relaxed">
@@ -521,7 +585,7 @@ export const Login: React.FC = () => {
                   <input 
                     type={showPwd ? 'text' : 'password'} 
                     required 
-                    autoFocus
+                    autoFocus={step === 'reset_new'}
                     placeholder="Nouveau mot de passe (8+ caractères)"
                     value={newPassword} 
                     onChange={e => setNewPassword(e.target.value)}
@@ -547,6 +611,31 @@ export const Login: React.FC = () => {
                     />
                   ))}
                 </div>
+
+                {step === 'new_password' && (
+                  <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left">
+                    <label className="flex cursor-pointer items-start gap-2 text-[11px] font-semibold text-slate-600">
+                      <input
+                        type="checkbox"
+                        required
+                        checked={termsAccepted}
+                        onChange={e => { setTermsAccepted(e.target.checked); setError(null); }}
+                        className="mt-0.5 h-4 w-4 accent-[#18bfd6]"
+                      />
+                      <span>J’accepte les conditions générales d’utilisation de Kharandi.</span>
+                    </label>
+                    <label className="flex cursor-pointer items-start gap-2 text-[11px] font-semibold text-slate-600">
+                      <input
+                        type="checkbox"
+                        required
+                        checked={privacyAccepted}
+                        onChange={e => { setPrivacyAccepted(e.target.checked); setError(null); }}
+                        className="mt-0.5 h-4 w-4 accent-[#18bfd6]"
+                      />
+                      <span>J’accepte la politique de confidentialité et le traitement de mes données.</span>
+                    </label>
+                  </div>
+                )}
               </motion.div>
             )}
 

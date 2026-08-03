@@ -65,29 +65,35 @@ export async function getSubscriptionStatus(): Promise<SubscriptionStatus> {
   };
 }
 
-export async function initiateSubscription(planId: string, currency = 'GNF') {
+export async function initiateSubscription(planId: string, _currency = 'GNF') {
   if (!planCache.length) await getPlans().catch(() => undefined);
   const plan = planCache.find(item => String(item.id) === String(planId));
   const productCode = plan?.product_code || plan?.code || planId;
   const { data } = await api.post('/payments/checkout/initiate', {
     product_code: productCode,
-    currency,
+    quantity: 1,
   });
   return unwrap(data);
 }
 
 export async function initiateCatalogCheckout(payload: {
-  product_code: CheckoutProductCode;
-  option_codes?: CheckoutOptionCode[];
+  product_code: CheckoutProductCode | string;
+  option_codes?: Array<CheckoutOptionCode | string>;
   quantity?: number;
 }) {
-  const { data } = await api.post('/payments/checkout/initiate', payload);
+  const { data } = await api.post('/payments/checkout/initiate', {
+    product_code: payload.product_code,
+    quantity: payload.quantity ?? 1,
+  });
   return unwrap(data);
 }
 
-export async function initiatePayment(payload: { order_id: string }) {
-  const { data } = await api.post('/payments/checkout/initiate', { order_id: payload.order_id });
-  return unwrap(data);
+export async function initiatePayment(payload: {
+  product_code: string;
+  quantity?: number;
+  option_codes?: string[];
+}) {
+  return initiateCatalogCheckout(payload);
 }
 
 export async function getTransactionStatus(reference: string): Promise<TransactionStatus> {

@@ -66,10 +66,10 @@ export const EcoleDashboard: React.FC<{
   const [showAddTeacher,  setShowAddTeacher]  = useState(false);
 
   const [newStudent,  setNewStudent]  = useState({ name: '', classe: '', parent_phone: '' });
-  const [newGrade,    setNewGrade]    = useState({ student_id: '', subject: '', value: '', trimester: 'T1', comment: '' });
+  const [newGrade,    setNewGrade]    = useState({ student_id: '', subject_id: '', value: '', trimester: 'T1' });
   const [newPayment,  setNewPayment]  = useState({ student_id: '', label: 'Scolarité T1', amount: '' });
   const [newAbsence,  setNewAbsence]  = useState({ student_id: '', date: new Date().toISOString().split('T')[0], subject: '', is_justified: false });
-  const [newTeacher,  setNewTeacher]  = useState({ name: '', email: '', password: 'kharandi2026', classes: '' });
+  const [newTeacher,  setNewTeacher]  = useState({ name: '', email: '', phone: '', specialities: '' });
 
   // Bulletin selection states
   const [bulletinStudent, setBulletinStudent] = useState<string>('');
@@ -522,7 +522,7 @@ export const EcoleDashboard: React.FC<{
                       <select value={newStudent.classe} onChange={e => setNewStudent({...newStudent, classe: e.target.value})} className={inputCls}>
                         <option value="">Sélectionner —</option>
                         {classes.length > 0 ? (
-                          classes.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
+                          classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
                         ) : (
                           ['7ème Année', '8ème Année', '9ème Année', '10ème Année', '11ème SM', 'Terminal SSE', 'Terminal SM', 'Terminal SE'].map(cl => (
                             <option key={cl} value={cl}>{cl}</option>
@@ -540,7 +540,13 @@ export const EcoleDashboard: React.FC<{
                     <button onClick={async () => {
                       if (!newStudent.name) { toast.error("Le nom de l'élève est requis."); return; }
                       try {
-                        await addStudent(schoolId, newStudent);
+                        const names = newStudent.name.trim().split(/\s+/);
+                        await addStudent(schoolId, {
+                          first_name: names.shift() || '',
+                          last_name: names.join(' '),
+                          class_id: newStudent.classe ? Number(newStudent.classe) : undefined,
+                          parent_phone: newStudent.parent_phone || undefined,
+                        });
                         toast.success("Élève inscrit avec succès !");
                         setNewStudent({ name:'', classe:'', parent_phone:'' });
                         setShowAddStudent(false);
@@ -608,8 +614,8 @@ export const EcoleDashboard: React.FC<{
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-bold text-slate-500 mb-1 block">Matière *</label>
-                      <input placeholder="ex: Mathématiques, Physique..." value={newGrade.subject} onChange={e => setNewGrade({...newGrade, subject: e.target.value})} className={inputCls} />
+                      <label className="text-xs font-bold text-slate-500 mb-1 block">ID matière *</label>
+                      <input type="number" min="1" placeholder="ex: 3" value={newGrade.subject_id} onChange={e => setNewGrade({...newGrade, subject_id: e.target.value})} className={inputCls} />
                     </div>
                     <div>
                       <label className="text-xs font-bold text-slate-500 mb-1 block">Note obtenue (/20) *</label>
@@ -623,19 +629,15 @@ export const EcoleDashboard: React.FC<{
                         <option value="T3">3ème Trimestre</option>
                       </select>
                     </div>
-                    <div className="md:col-span-2">
-                      <label className="text-xs font-bold text-slate-500 mb-1 block">Appréciation / Observation</label>
-                      <input placeholder="ex: Très bon esprit d'analyse, élève attentif" value={newGrade.comment} onChange={e => setNewGrade({...newGrade, comment: e.target.value})} className={inputCls} />
-                    </div>
                   </div>
                   <div className="flex gap-2 mt-5 justify-end">
                     <button onClick={() => setShowAddGrade(false)} className="px-5 py-2.5 bg-slate-100 text-slate-500 hover:bg-slate-200/80 rounded-2xl font-black text-xs uppercase tracking-wider cursor-pointer transition-colors">Annuler</button>
                     <button onClick={async () => {
-                      if (!newGrade.student_id || !newGrade.subject || !newGrade.value) { toast.error("Veuillez renseigner tous les champs requis."); return; }
+                      if (!newGrade.student_id || !newGrade.subject_id || !newGrade.value) { toast.error("Veuillez renseigner tous les champs requis."); return; }
                       try {
-                        await addGrade({ ...newGrade, teacher_id: isTeacher ? profile.id : undefined });
+                        await addGrade(newGrade);
                         toast.success("Note enregistrée avec succès !");
-                        setNewGrade({ student_id:'', subject:'', value:'', trimester:'T1', comment:'' });
+                        setNewGrade({ student_id:'', subject_id:'', value:'', trimester:'T1' });
                         setShowAddGrade(false);
                         loadAll();
                       } catch { toast.error("Erreur lors de l'enregistrement de la note."); }
@@ -1676,12 +1678,12 @@ export const EcoleDashboard: React.FC<{
                       <input type="email" placeholder="ex: conde@ecole.gn" value={newTeacher.email} onChange={e => setNewTeacher({...newTeacher, email: e.target.value})} className={inputCls} />
                     </div>
                     <div>
-                      <label className="text-xs font-bold text-slate-500 mb-1 block">Mot de passe temporaire</label>
-                      <input placeholder="Par défaut: kharandi2026" value={newTeacher.password} onChange={e => setNewTeacher({...newTeacher, password: e.target.value})} className={inputCls} />
+                      <label className="text-xs font-bold text-slate-500 mb-1 block">Téléphone</label>
+                      <input placeholder="Ex: +224620000000" value={newTeacher.phone} onChange={e => setNewTeacher({...newTeacher, phone: e.target.value})} className={inputCls} />
                     </div>
                     <div>
-                      <label className="text-xs font-bold text-slate-500 mb-1 block font-semibold">Classes Assignées (Séparées par virgule)</label>
-                      <input placeholder="ex: Terminal SSE, Terminal SM" value={newTeacher.classes} onChange={e => setNewTeacher({...newTeacher, classes: e.target.value})} className={inputCls} />
+                      <label className="text-xs font-bold text-slate-500 mb-1 block font-semibold">Spécialités (séparées par virgule)</label>
+                      <input placeholder="Ex: Mathématiques, Physique" value={newTeacher.specialities} onChange={e => setNewTeacher({...newTeacher, specialities: e.target.value})} className={inputCls} />
                     </div>
                   </div>
                   <div className="flex gap-2 mt-5 justify-end">
@@ -1689,13 +1691,17 @@ export const EcoleDashboard: React.FC<{
                     <button onClick={async () => {
                       if (!newTeacher.name || !newTeacher.email) { toast.error("Nom et Email obligatoires."); return; }
                       try {
+                        const names = newTeacher.name.trim().split(/\s+/);
                         await addTeacher({
-                          school_id: schoolId, name: newTeacher.name, email: newTeacher.email,
-                          password: newTeacher.password,
-                          classes: newTeacher.classes.split(',').map(c => c.trim()).filter(Boolean),
+                          school_id: Number(schoolId),
+                          first_name: names.shift() || '',
+                          last_name: names.join(' '),
+                          email: newTeacher.email,
+                          phone: newTeacher.phone || undefined,
+                          specialities: newTeacher.specialities.split(',').map(c => c.trim()).filter(Boolean),
                         });
                         toast.success("Enseignant ajouté avec succès !"); setShowAddTeacher(false); loadAll();
-                        setNewTeacher({ name: '', email: '', password: 'kharandi2026', classes: '' });
+                        setNewTeacher({ name: '', email: '', phone: '', specialities: '' });
                       } catch (err: any) { toast.error(err.response?.data?.message || "Erreur lors de la création."); }
                     }} className={btnClass}>Enregistrer l'enseignant</button>
                   </div>

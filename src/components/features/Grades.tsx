@@ -8,17 +8,15 @@ import { toast } from 'sonner';
 
 export const Grades: React.FC = () => {
   const { userProfile } = useAuth();
-  const isTeacher = userProfile?.role === 'TUTOR';
+  const isTeacher = userProfile?.role === 'repetiteur' || userProfile?.role === 'teacher' || userProfile?.role === 'admin';
   const [grades,       setGrades]       = useState<any[]>([]);
   const [students,     setStudents]     = useState<any[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [showForm,     setShowForm]     = useState(false);
   const [studentId,    setStudentId]    = useState('');
-  const [subject,      setSubject]      = useState('');
-  const [gradeType,    setGradeType]    = useState('Devoir');
-  const [score,        setScore]        = useState('');
-  const [maxScore,     setMaxScore]     = useState('20');
-  const [date,         setDate]         = useState(new Date().toISOString().split('T')[0]);
+  const [subjectId,    setSubjectId]    = useState('');
+  const [value,        setValue]        = useState('');
+  const [trimester,    setTrimester]    = useState('T1');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -37,16 +35,21 @@ export const Grades: React.FC = () => {
     if (!studentId && isTeacher) { toast.error("Sélectionnez un élève."); return; }
     setIsSubmitting(true);
     try {
-      await createGrade({ student_id: studentId, subject, grade_type: gradeType, score: Number(score), max_score: Number(maxScore), date });
+      await createGrade({
+        student_id: studentId,
+        subject_id: subjectId,
+        value: Number(value),
+        trimester,
+      });
       toast.success("Note ajoutée !");
-      setShowForm(false); setStudentId(''); setSubject(''); setScore('');
+      setShowForm(false); setStudentId(''); setSubjectId(''); setValue('');
       setGrades(await getGrades());
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Erreur lors de l'ajout.");
     } finally { setIsSubmitting(false); }
   };
 
-  const avg = grades.length > 0 ? (grades.reduce((s, g) => s + (Number(g.score) / Number(g.max_score)) * 20, 0) / grades.length).toFixed(1) : '—';
+  const avg = grades.length > 0 ? (grades.reduce((sum, grade) => sum + Number(grade.value ?? grade.score ?? 0), 0) / grades.length).toFixed(1) : '—';
 
   if (loading) return <EduLoading message="Chargement des notes..." />;
 
@@ -82,31 +85,18 @@ export const Grades: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-bold text-slate-600 mb-1 block">Matière</label>
-                <input required value={subject} onChange={e => setSubject(e.target.value)} placeholder="Mathématiques"
+                <label className="text-xs font-bold text-slate-600 mb-1 block">ID matière</label>
+                <input type="number" min="1" required value={subjectId} onChange={e => setSubjectId(e.target.value)} placeholder="Ex. 3"
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
               </div>
               <div>
-                <label className="text-xs font-bold text-slate-600 mb-1 block">Type</label>
-                <select value={gradeType} onChange={e => setGradeType(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary bg-white">
-                  {['Devoir','Interro','Examen','TP','Oral'].map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-600 mb-1 block">Date</label>
-                <input type="date" required value={date} onChange={e => setDate(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+                <label className="text-xs font-bold text-slate-600 mb-1 block">Trimestre</label>
+                <select value={trimester} onChange={e => setTrimester(e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary bg-white"><option value="T1">1er trimestre</option><option value="T2">2e trimestre</option><option value="T3">3e trimestre</option></select>
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-600 mb-1 block">Note</label>
-                <input type="number" required min="0" step="0.5" value={score} onChange={e => setScore(e.target.value)}
+                <input type="number" required min="0" max="20" step="0.5" value={value} onChange={e => setValue(e.target.value)}
                   placeholder="14" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-600 mb-1 block">Note max</label>
-                <input type="number" required min="1" step="1" value={maxScore} onChange={e => setMaxScore(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
               </div>
             </div>
             <button type="submit" disabled={isSubmitting}
@@ -142,18 +132,19 @@ export const Grades: React.FC = () => {
       ) : (
         <div className="space-y-3">
           {grades.map((g: any) => {
-            const pct = Math.round((Number(g.score) / Number(g.max_score)) * 100);
+            const gradeValue = Number(g.value ?? g.score ?? 0);
+            const pct = Math.round((gradeValue / 20) * 100);
             const color = pct >= 80 ? 'text-green-600 bg-green-50' : pct >= 50 ? 'text-yellow-600 bg-yellow-50' : 'text-red-600 bg-red-50';
             return (
               <div key={g.id} className="bg-white rounded-[20px] border border-slate-100 shadow-sm p-5 flex items-center gap-4">
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black shrink-0 ${color}`}>
-                  {g.score}
+                  {gradeValue}
                 </div>
                 <div className="flex-1">
-                  <p className="font-bold text-slate-900">{g.subject}</p>
-                  <p className="text-xs text-slate-400">{g.grade_type} · {isTeacher ? g.student_name : g.teacher_name} · {new Date(g.date).toLocaleDateString('fr-FR')}</p>
+                  <p className="font-bold text-slate-900">{g.subject?.name || g.subject_name || `Matière #${g.subject_id}`}</p>
+                  <p className="text-xs text-slate-400">{g.trimester} · {isTeacher ? g.student_name : g.teacher_name}</p>
                 </div>
-                <span className="text-sm font-black text-slate-600">{g.score}/{g.max_score}</span>
+                <span className="text-sm font-black text-slate-600">{gradeValue}/20</span>
               </div>
             );
           })}
