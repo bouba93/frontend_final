@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { api } from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { saveAuthSession } from '../../lib/authSession';
+import { getOrCreateDeviceId } from '../../lib/deviceId';
 
 type Step = 'phone' | 'otp' | 'password' | 'new_password' | 'reset_otp' | 'reset_new';
 type Mode = 'login' | 'register';
@@ -52,11 +53,12 @@ export const Login: React.FC = () => {
   const _go = () => { window.location.href = '/'; };
 
   const requestOtp = async (p: string, targetMode: Mode) => {
+    const device_id = getOrCreateDeviceId();
     if (targetMode === 'register') {
-      await api.post('/auth/otp/send/', { phone: p, purpose: 'REGISTER' });
+      await api.post('/auth/otp/send/', { phone: p, purpose: 'REGISTER', device_id });
       return;
     }
-    await api.post('/auth/login/', { phone: p });
+    await api.post('/auth/login/', { phone: p, device_id });
   };
 
   const resendOtp = async () => {
@@ -76,7 +78,7 @@ export const Login: React.FC = () => {
     setLoading(true); setError(null);
     try {
       if (mode === 'login') {
-        const { data } = await api.post('/auth/login/', { phone: p });
+        const { data } = await api.post('/auth/login/', { phone: p, device_id: getOrCreateDeviceId() });
         const payload = data?.data || data || {};
         if (payload?.tokens?.access || payload?.authToken || payload?.access || payload?.access_token || payload?.token) { _save(data); _go(); return; }
         if (String(payload?.action || '').toUpperCase() === 'REGISTER') {
@@ -111,7 +113,7 @@ export const Login: React.FC = () => {
   const handlePassword = async () => {
     setLoading(true); setError(null);
     try {
-      const { data } = await api.post('/auth/login/password/', { phone: fmt(), password });
+      const { data } = await api.post('/auth/login/password/', { phone: fmt(), password, device_id: getOrCreateDeviceId() });
       _save(data); toast.success('Connexion réussie !'); _go();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Mot de passe incorrect.');
@@ -124,7 +126,7 @@ export const Login: React.FC = () => {
     const p = fmt();
     try {
       if (mode === 'login') {
-        const { data } = await api.post('/auth/login/verify/', { phone: p, code: otpCode });
+        const { data } = await api.post('/auth/login/verify/', { phone: p, code: otpCode, device_id: getOrCreateDeviceId() });
         _save(data); toast.success('Connexion réussie !'); _go();
       } else {
         // Inscription → aller vers création mot de passe
@@ -159,6 +161,7 @@ export const Login: React.FC = () => {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         role,
+        device_id: getOrCreateDeviceId(),
       });
       _save(data);
       const onboardingRole = role === 'STUDENT' ? 'student'
