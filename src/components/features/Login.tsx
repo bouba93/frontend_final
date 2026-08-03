@@ -9,6 +9,7 @@ import { saveAuthSession } from '../../lib/authSession';
 
 type Step = 'phone' | 'otp' | 'password' | 'new_password' | 'reset_otp' | 'reset_new';
 type Mode = 'login' | 'register';
+type RegistrationRole = 'STUDENT' | 'PARENT' | 'TUTOR' | 'VENDOR';
 
 export const Login: React.FC = () => {
   const { setGuestMode } = useAuth();
@@ -18,6 +19,7 @@ export const Login: React.FC = () => {
   const [otpCode,     setOtpCode]     = useState('');
   const [password,    setPassword]    = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [role,        setRole]        = useState<RegistrationRole | ''>('');
   const [showPwd,     setShowPwd]     = useState(false);
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState<string|null>(null);
@@ -118,13 +120,16 @@ export const Login: React.FC = () => {
 
   // ── Inscription : créer le mot de passe ───────────────────────────────────
   const handleNewPassword = async () => {
+    if (!role) {
+      setError("Choisissez votre profil pour continuer."); return;
+    }
     if (newPassword.length < 8) {
       setError("Minimum 8 caractères."); return;
     }
     setLoading(true); setError(null);
     try {
       const { data } = await api.post('/auth/register/', {
-        phone: fmt(), code: otpCode, password: newPassword,
+        phone: fmt(), code: otpCode, password: newPassword, role,
       });
       _save(data);
       toast.success('Compte créé ! Bienvenue sur Kharandi 🎉');
@@ -172,7 +177,7 @@ export const Login: React.FC = () => {
 
   const reset = (m: Mode) => {
     setMode(m); setStep('phone'); setError(null);
-    setOtpCode(''); setPassword(''); setNewPassword('');
+    setOtpCode(''); setPassword(''); setNewPassword(''); setRole('');
   };
 
   const FloatingIcon = ({ icon: Icon, color, delay, top, left, rotate }: any) => (
@@ -477,6 +482,35 @@ export const Login: React.FC = () => {
             {/* Step : New Password / Reset Confirm */}
             {(step === 'new_password' || step === 'reset_new') && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+                {step === 'new_password' && (
+                  <fieldset className="space-y-2 text-left">
+                    <legend className="text-xs font-black text-slate-700">
+                      Je crée un compte comme <span className="text-red-500">*</span>
+                    </legend>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        ['STUDENT', 'Élève'],
+                        ['PARENT', 'Parent'],
+                        ['TUTOR', 'Répétiteur'],
+                        ['VENDOR', 'Vendeur'],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={role === value}
+                          onClick={() => { setRole(value); setError(null); }}
+                          className={`rounded-2xl border px-3 py-3 text-xs font-black transition-all cursor-pointer ${
+                            role === value
+                              ? 'border-[#18bfd6] bg-[#18bfd6]/10 text-[#0e91a3] ring-2 ring-[#18bfd6]/10'
+                              : 'border-slate-200 bg-white text-slate-500 hover:border-[#18bfd6]/50'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                )}
                 <div className="bg-[#18bfd6]/5 border border-[#18bfd6]/10 rounded-2xl p-4 text-left">
                   <p className="text-xs text-slate-600 font-medium leading-relaxed">
                     🔒 <strong>Sécurité locale :</strong> Ce mot de passe sera mémorisé sur votre appareil pour vous éviter de futurs codes SMS.
