@@ -5,7 +5,8 @@ interface UserProfile {
   uid: string; email: string; role: string; name: string;
   firstName?: string; lastName?: string; displayName?: string;
   phone?: string; interests: string[]; onboardingCompleted: boolean;
-  isApproved?: boolean; points?: number; subscriptionPlan?: string;
+  isApproved?: boolean; isSuperadmin?: boolean;
+  points?: number; subscriptionPlan?: string;
   activeAddons?: string[];
   city?: string;
   avatar?: string;
@@ -38,46 +39,63 @@ const mapProfile = (data: any): UserProfile => {
     interests: [], onboardingCompleted: false, points: 0,
     subscriptionPlan: 'free', activeAddons: [],
   };
-  const d = data.data || data;
-  const p = d.profile || d;
+  const root = data?.data || data || {};
+  const account = root.user || root.account || root.member || root;
+  const p = root.profile || account.profile || {};
 
-  let rawRole = (d.role || p.role || 'student').toLowerCase();
+  const boolValue = (value: unknown) => (
+    value === true || value === 1 || value === '1' ||
+    String(value).toLowerCase() === 'true'
+  );
+  const isSuperadmin = boolValue(
+    root.is_superadmin ?? root.isSuperadmin ??
+    account.is_superadmin ?? account.isSuperadmin ??
+    p.is_superadmin ?? p.isSuperadmin
+  );
+
+  let rawRole = String(
+    root.role || account.role || p.role || (isSuperadmin ? 'ADMIN' : 'STUDENT')
+  ).trim().toLowerCase();
   if (rawRole === 'tutor' || rawRole === 'teacher') rawRole = 'repetiteur';
   if (rawRole === 'vendor' || rawRole === 'seller') rawRole = 'seller';
-  if (rawRole === 'superadmin') rawRole = 'admin';
+  if (rawRole === 'superadmin' || rawRole === 'super_admin' || isSuperadmin) rawRole = 'admin';
 
-  const phone = d.phone || d.username || '';
+  const phone =
+    root.phone_e164 || root.phone ||
+    account.phone_e164 || account.phone || account.username ||
+    p.phone_e164 || p.phone || '';
+  const firstName = p.first_name || account.first_name || root.first_name || '';
+  const lastName = p.last_name || account.last_name || root.last_name || '';
 
   return {
-    uid:   d.id  || d.uid   || 'unknown',
-    email: d.email || phone || '',
+    uid:   account.id || root.id || account.uid || root.uid || 'unknown',
+    email: account.email || root.email || p.email || phone || '',
     phone,
     role:  rawRole,
-    firstName: p.first_name || d.first_name || '',
-    lastName: p.last_name || d.last_name || '',
-    displayName: p.display_name || d.display_name || '',
-    name:  p.first_name
-      ? `${p.first_name} ${p.last_name || ''}`.trim()
-      : (phone || 'Utilisateur'),
+    isSuperadmin,
+    firstName,
+    lastName,
+    displayName: p.display_name || account.display_name || root.display_name || '',
+    name: firstName
+      ? `${firstName} ${lastName}`.trim()
+      : (p.display_name || account.display_name || root.display_name || phone || 'Utilisateur'),
     interests:           p.interests || [],
     onboardingCompleted: (
-      p.onboarding_completed === true || d.onboarding_completed === true ||
-      p.onboarding_completed === 'true' || d.onboarding_completed === 'true' ||
-      p.onboarding_completed === 'True' || d.onboarding_completed === 'True' ||
-      p.onboarding_completed === 1 || d.onboarding_completed === 1 ||
-      p.onboarding_completed === '1' || d.onboarding_completed === '1'
+      boolValue(p.onboarding_completed) ||
+      boolValue(account.onboarding_completed) ||
+      boolValue(root.onboarding_completed)
     ),
-    isApproved:       d.is_active ?? true,
-    points:           p.points || 0,
-    subscriptionPlan: d.subscription_plan || 'free',
-    activeAddons:     d.active_addons || [],
-    city:             p.city || d.city || '',
-    avatar:           p.avatar_url || p.avatar?.url || p.avatar || d.avatar_url || d.avatar?.url || d.avatar || '',
-    bio:              p.bio || d.bio || '',
-    schoolLevel:      p.school_level || d.school_level || '',
-    serie:            p.serie || d.serie || '',
-    shopName:         p.shop_name || d.shop_name || '',
-    shopDescription:  p.shop_description || d.shop_description || '',
+    isApproved:       account.is_active ?? root.is_active ?? true,
+    points:           p.points ?? account.points ?? root.points ?? 0,
+    subscriptionPlan: root.subscription_plan || account.subscription_plan || p.subscription_plan || 'free',
+    activeAddons:     root.active_addons || account.active_addons || p.active_addons || [],
+    city:             p.city || account.city || root.city || '',
+    avatar:           p.avatar_url || p.avatar?.url || p.avatar || account.avatar_url || account.avatar?.url || account.avatar || root.avatar_url || root.avatar?.url || root.avatar || '',
+    bio:              p.bio || account.bio || root.bio || '',
+    schoolLevel:      p.school_level || p.niveau || account.school_level || account.niveau || root.school_level || root.niveau || '',
+    serie:            p.serie || account.serie || root.serie || '',
+    shopName:         p.shop_name || account.shop_name || root.shop_name || '',
+    shopDescription:  p.shop_description || account.shop_description || root.shop_description || '',
   };
 };
 

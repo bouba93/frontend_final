@@ -61,7 +61,11 @@ function AppRoutes() {
   }
 
   const isAuthenticated = !!userProfile || isGuest;
-  const isAdmin = userProfile?.role?.toLowerCase() === 'admin';
+  const normalizedRole = userProfile?.role?.trim().toLowerCase();
+  const isAdmin = userProfile?.isSuperadmin === true ||
+    normalizedRole === 'admin' ||
+    normalizedRole === 'superadmin' ||
+    normalizedRole === 'super_admin';
 
   const isNewlyRegistered = sessionStorage.getItem('just_registered') === 'true';
 
@@ -77,9 +81,11 @@ function AppRoutes() {
     <>
       <Routes>
         <Route path="/"
-          element={isAuthenticated ? <Dashboard /> : <LandingPage onLogin={() => navigate('/login')} />} />
+          element={isAuthenticated
+            ? (isAdmin ? <Navigate to="/admin" replace /> : <Dashboard />)
+            : <LandingPage onLogin={() => navigate('/login')} />} />
         <Route path="/login"
-          element={!isAuthenticated ? <Login /> : <Navigate to="/" />} />
+          element={!isAuthenticated ? <Login /> : <Navigate to={isAdmin ? '/admin' : '/'} replace />} />
         <Route path="/paiement/succes"  element={<PaymentSuccess />} />
         <Route path="/paiement/echec"   element={<PaymentFailure />} />
         <Route path="/payment/success"  element={<PaymentSuccess />} />
@@ -87,9 +93,11 @@ function AppRoutes() {
         <Route path="/ecole/*"
           element={<EcoleApp />} />
         <Route path="/admin"
-          element={isAuthenticated && isAdmin ? <AdminDashboard /> : <Navigate to="/" />} />
+          element={isAuthenticated && isAdmin ? <AdminDashboard /> : <Navigate to="/" replace />} />
         <Route path="/*"
-          element={isAuthenticated ? <Dashboard /> : <Navigate to="/" />} />
+          element={isAuthenticated
+            ? (isAdmin ? <Navigate to="/admin" replace /> : <Dashboard />)
+            : <Navigate to="/" replace />} />
       </Routes>
       <PWAInstallPrompt />
     </>
