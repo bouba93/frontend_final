@@ -1,0 +1,1 @@
+import{a as s,u as n}from"./index-Bwemw9EN.js";async function r(t){return[]}async function o(t){const{data:e}=await s.post("/support/tickets",{category:t.category,subject:t.subject,message:t.message});return(e==null?void 0:e.data)||e}async function u(t,e){return n("Réponse à un ticket support")}export{o as createTicket,r as getTickets,u as replyToTicket};
