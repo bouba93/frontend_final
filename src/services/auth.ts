@@ -7,7 +7,7 @@ export async function getMe() {
 }
 
 export async function updateProfile(payload: {
-  first_name?: string; last_name?: string; city?: string;
+  first_name?: string; last_name?: string; city?: string; zone?: string;
   avatar?: string;
   display_name?: string;
   school_level?: string; bio?: string; role?: string;
@@ -23,11 +23,13 @@ export async function updateProfile(payload: {
   terms_accepted?: boolean;
   privacy_accepted?: boolean;
 }) {
+  const normalizedZone = payload.zone ?? payload.city;
   const body = {
     device_id: getOrCreateDeviceId(),
     ...(payload.first_name !== undefined ? { first_name: payload.first_name } : {}),
     ...(payload.last_name !== undefined ? { last_name: payload.last_name } : {}),
     ...(payload.city !== undefined ? { city: payload.city } : {}),
+    ...(normalizedZone !== undefined ? { zone: normalizedZone } : {}),
     ...(payload.school_level !== undefined ? { niveau: payload.school_level } : {}),
   };
   const { data } = await api.patch("/auth/me/", body);
