@@ -1,0 +1,1 @@
+import{u as t}from"./index-Cs74i7Qo.js";const n=()=>t("Rapport PDF des transactions"),s=()=>t("Bulletin PDF"),a=()=>t("Export Excel des statistiques");export{a as downloadStatsExcel,s as downloadStudentReportPDF,n as downloadTransactionsPDF};
