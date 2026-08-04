@@ -1,4 +1,5 @@
 import { api } from "../config/api";
+import { getOrCreateDeviceId } from "../lib/deviceId";
 
 export async function getMe() {
   const { data } = await api.get("/auth/me/");
@@ -23,6 +24,7 @@ export async function updateProfile(payload: {
   privacy_accepted?: boolean;
 }) {
   const body = {
+    device_id: getOrCreateDeviceId(),
     ...(payload.first_name !== undefined ? { first_name: payload.first_name } : {}),
     ...(payload.last_name !== undefined ? { last_name: payload.last_name } : {}),
     ...(payload.city !== undefined ? { city: payload.city } : {}),
@@ -35,6 +37,7 @@ export async function updateProfile(payload: {
 export async function uploadAvatar(file: File) {
   const form = new FormData();
   form.append('avatar', file);
+  form.append('device_id', getOrCreateDeviceId());
   const { data } = await api.patch('/auth/me/', form);
   return data?.data || data;
 }

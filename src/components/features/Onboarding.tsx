@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateProfile } from '../../services/auth';
+import { getErrorMessage } from '../../lib/apiError';
 import { getPlans } from '../../services/payments';
 import { PaymentButton } from './PaymentButton';
 import { toast } from 'sonner';
@@ -283,7 +284,7 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
       }
     } catch (error: any) {
       console.error("Error saving profile progress:", error);
-      toast.error(error.message || "Une erreur est survenue lors de l'enregistrement.");
+      toast.error(getErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -340,7 +341,7 @@ export const Onboarding: React.FC<{ onComplete: () => Promise<void> }> = ({ onCo
       await onComplete();
     } catch (error: any) {
       console.error("Error completing onboarding on Django:", error);
-      toast.error(error.message || "Une erreur est survenue lors de la finalisation.");
+      toast.error(getErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }

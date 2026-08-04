@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateProfile, uploadAvatar } from '../../services/auth';
 import { toast } from 'sonner';
+import { getErrorMessage } from '../../lib/apiError';
 
 export const Profile: React.FC = () => {
   const [activeView, setActiveView] = useState<string | null>(null);
@@ -52,7 +53,7 @@ export const Profile: React.FC = () => {
       toast.success('Profil mis à jour.');
     } catch (error) {
       console.error('Update profile error:', error);
-      toast.error("Le profil n'a pas pu être mis à jour.");
+      toast.error(getErrorMessage(error));
     }
   };
 
